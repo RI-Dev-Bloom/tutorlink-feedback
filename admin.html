@@ -39,6 +39,13 @@
     --neg-1:#f0a3a2;
     --neg-2:#d03b3b;
     --grid:#ECEEF2;
+
+    /* How good or bad: solid steps from green (best) to red (worst) */
+    --s0:#12803c;
+    --s1:#7cb342;
+    --s2:#f2c12e;
+    --s3:#f08a24;
+    --s4:#d03b3b;
   }
   *{box-sizing:border-box}
   html{-webkit-text-size-adjust:100%}
@@ -178,6 +185,39 @@
   .col.pick{cursor:pointer}
   .col.dim span{opacity:.3}
 
+  /* Severity: solid fills, always shown with a word or number */
+  .s0{background:var(--s0);color:#fff}
+  .s1{background:var(--s1);color:#0b0b0b}
+  .s2{background:var(--s2);color:#0b0b0b}
+  .s3{background:var(--s3);color:#0b0b0b}
+  .s4{background:var(--s4);color:#fff}
+  .sev{display:inline-block;padding:1px 9px;border-radius:999px;font-size:12.5px;font-weight:500;line-height:1.6;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .tile.t0{box-shadow:inset 0 3px 0 var(--s0)} .tile.t1{box-shadow:inset 0 3px 0 var(--s1)} .tile.t2{box-shadow:inset 0 3px 0 var(--s2)}
+  .tile.t3{box-shadow:inset 0 3px 0 var(--s3)} .tile.t4{box-shadow:inset 0 3px 0 var(--s4)}
+  .tile .s .sev{margin-right:4px}
+  .sev-legend{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px}
+
+  /* Overall opinion score */
+  .ov{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) minmax(0,1fr);gap:28px}
+  .ov h3{font-size:13.5px;font-weight:600;margin:0 0 12px;color:var(--ink-2)}
+  .ov-hero{display:flex;gap:18px;align-items:flex-start}
+  .ov-num{flex:none;width:116px;height:116px;border-radius:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+  .ov-num b{font-size:46px;font-weight:600;letter-spacing:-.03em;line-height:1}
+  .ov-num small{font-size:13px;font-weight:600;margin-top:6px}
+  .ov-num.none{background:var(--hover);color:var(--muted)}
+  .ov-hero h2{font-size:20px;letter-spacing:-.015em;margin:2px 0 6px}
+  .ov-hero p{margin:0;font-size:13.5px;color:var(--ink-2)}
+  .scale{display:flex;gap:2px;margin-top:16px}
+  .scale span{flex:1;min-width:0;padding:5px 2px;text-align:center;font-size:11.5px;line-height:1.3}
+  .scale span:first-child{border-radius:6px 0 0 6px}
+  .scale span:last-child{border-radius:0 6px 6px 0}
+  .scale span.on{font-weight:700;box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--ink);position:relative;z-index:1}
+  .scale span small{display:block;font-size:10.5px;opacity:.85}
+  .ov-days{margin-top:24px}
+  .cols.abs{height:130px}
+  @media (max-width:900px){ .ov{grid-template-columns:minmax(0,1fr)} }
+  @media (max-width:420px){ .ov-num{width:96px;height:96px} .ov-num b{font-size:38px} .scale span{font-size:10.5px} }
+
   /* Tooltip */
   .tip{position:fixed;z-index:50;pointer-events:none;background:var(--ink);color:#fff;font-size:12.5px;line-height:1.4;
     padding:6px 9px;border-radius:8px;max-width:260px;box-shadow:0 6px 20px rgba(20,26,41,.18);opacity:0;transition:opacity .12s ease}
@@ -257,14 +297,15 @@
     { id: "spot_students", label: "TutorLink makes it easier to spot students who need help.", who: "All staff" }
   ];
   const CHOICE_Q = [
-    { id: "prefer_over_paper", label: "TutorLink or a paper register?", options: ["TutorLink", "Paper register", "No preference"] },
-    { id: "disappointment", label: "If TutorLink disappeared tomorrow, how would you feel?", options: ["Very disappointed", "Somewhat disappointed", "Not disappointed"] },
-    { id: "broken", label: "Did anything break or not work properly?", options: ["No, everything worked", "Yes, something didn’t work"] },
-    { id: "stay_organised", label: "Would an app for campus life help you stay organised?", options: ["Yes", "Maybe", "No"] },
+    // sev: how good each option is for TutorLink (0 = best … 4 = worst), used for bar colors
+    { id: "prefer_over_paper", label: "TutorLink or a paper register?", options: ["TutorLink", "Paper register", "No preference"], sev: [0, 4, 2] },
+    { id: "disappointment", label: "If TutorLink disappeared tomorrow, how would you feel?", options: ["Very disappointed", "Somewhat disappointed", "Not disappointed"], sev: [0, 2, 4] },
+    { id: "broken", label: "Did anything break or not work properly?", options: ["No, everything worked", "Yes, something didn’t work"], sev: [0, 4] },
+    { id: "stay_organised", label: "Would an app for campus life help you stay organised?", options: ["Yes", "Maybe", "No"], sev: [0, 2, 4] },
     { id: "minutes_saved", label: "Time saved per class vs paper register", who: "Tutors & lecturers",
-      options: ["None", "1 to 2 minutes", "3 to 5 minutes", "6 to 10 minutes", "More than 10 minutes"] },
+      options: ["None", "1 to 2 minutes", "3 to 5 minutes", "6 to 10 minutes", "More than 10 minutes"], sev: [4, 3, 2, 1, 0] },
     { id: "time_saved", label: "Time TutorLink would save each week", who: "Admins",
-      options: ["None", "Less than 15 minutes", "15 to 30 minutes", "30 to 60 minutes", "1 to 2 hours", "More than 2 hours"] }
+      options: ["None", "Less than 15 minutes", "15 to 30 minutes", "30 to 60 minutes", "1 to 2 hours", "More than 2 hours"], sev: [4, 3, 2, 1, 1, 0] }
   ];
   const MULTI_Q = [
     { id: "wanted_features", label: "Which of these would make campus easier?" },
@@ -377,7 +418,59 @@
     };
   }
   const susGrade = s => s === null ? "" : s >= 80.3 ? "Excellent" : s >= 68 ? "Good (above average)" : s >= 51 ? "OK (below average)" : "Poor";
-  const npsGrade = s => s === null ? "" : s >= 50 ? "Excellent" : s >= 20 ? "Good" : s >= 0 ? "OK" : "Needs work";
+  const signed = n => (n > 0 ? "+" : "") + n;
+
+  // ---------- How good or bad (0 = Excellent … 4 = Poor) ----------
+  const LEVELS = ["Excellent", "Good", "OK", "Weak", "Poor"];
+  const CUTS = {
+    score:   [80, 65, 50, 35],       // any 0–100 score, incl. the overall opinion score
+    sus:     [80.3, 68, 60, 51],     // 68 = industry average
+    nps:     [50, 20, 0, -20],
+    veryDis: [40, 30, 20, 10],       // 40%+ “very disappointed” = strong demand
+    pct:     [80, 65, 50, 35],       // % giving the good answer
+    broke:   [-5, -15, -30, -50]     // % who said something broke (lower is better, so negated)
+  };
+  const lvl = (v, cuts) => {
+    if (v === null || v === undefined || Number.isNaN(v)) return null;
+    const i = cuts.findIndex(c => v >= c);
+    return i === -1 ? 4 : i;
+  };
+  const pill = (l, text) => l === null ? esc(text) : `<span class="sev s${l}" data-tip="${LEVELS[l]}">${esc(text)}</span>`;
+  const npsPersonLvl = v => v === null || v === undefined ? null : v >= 9 ? 0 : v >= 7 ? 2 : 4;
+  const sevLegend = `<div class="sev-legend">${LEVELS.map((l, i) => `<span class="sev s${i}">${l}</span>`).join("")}</div>`;
+
+  // Overall opinion score: six parts, each turned into 0–100, then averaged equally.
+  // Parts nobody answered are left out.
+  function opinion(list) {
+    const s = stats(list);
+    const mapAvg = (id, map) => { const v = list.map(r => map[ans(r, id)]).filter(x => x !== undefined); return v.length ? avg(v) : null; };
+    const broke = list.filter(r => ans(r, "broken"));
+    const brokePct = broke.length ? pct(broke.filter(r => ans(r, "broken").startsWith("Yes")).length, broke.length) : null;
+    const stmts = [];
+    list.forEach(r => LIKERT_Q.slice(10).forEach(q => { const v = ans(r, q.id); if (typeof v === "number") stmts.push((v - 1) * 25); }));
+    const stmt = stmts.length ? avg(stmts) : null;
+    const parts = [
+      { label: "Ease of use", how: "SUS score, 0–100", score: s.sus,
+        shown: s.sus === null ? "–" : s.sus.toFixed(1) },
+      { label: "Would recommend", how: "NPS −100…+100, moved onto 0–100", score: s.nps === null ? null : (s.nps + 100) / 2,
+        shown: s.nps === null ? "–" : "NPS " + signed(s.nps) },
+      { label: "Would miss it", how: "Very disappointed = 100, somewhat = 50, not = 0",
+        score: mapAvg("disappointment", { "Very disappointed": 100, "Somewhat disappointed": 50, "Not disappointed": 0 }),
+        shown: s.disN ? `${s.veryDis}% very` : "–" },
+      { label: "Prefers TutorLink", how: "TutorLink = 100, no preference = 50, paper = 0",
+        score: mapAvg("prefer_over_paper", { "TutorLink": 100, "No preference": 50, "Paper register": 0 }),
+        shown: s.prefN ? `${s.prefer}%` : "–" },
+      { label: "Worked without breaking", how: "% who said nothing broke", score: brokePct === null ? null : 100 - brokePct,
+        shown: brokePct === null ? "–" : `${100 - brokePct}%` },
+      { label: "Agree with the good statements", how: "Look, speed and role questions, 1–5 moved onto 0–100", score: stmt,
+        shown: stmt === null ? "–" : `${Math.round(stmt)}` }
+    ];
+    // Rate each part on its 0–100 number, so its color matches the score scale
+    parts.forEach(p => { p.level = lvl(p.score, CUTS.score); });
+    const have = parts.filter(p => p.score !== null);
+    const overall = have.length ? Math.round(avg(have.map(p => p.score))) : null;
+    return { overall, level: lvl(overall, CUTS.score), parts, brokePct };
+  }
 
   function counts(list, id, options) {
     const m = new Map((options || []).map(o => [o, 0]));
@@ -389,14 +482,16 @@
   }
 
   // ---------- Chart pieces ----------
-  function hbars(entries, total, sort) {
+  // sev (optional): how good each answer is, 0 = best … 4 = worst, in option order
+  function hbars(entries, total, sort, sev) {
     if (!total) return `<p class="empty">No answers yet.</p>`;
+    const sevOf = new Map(sev ? entries.map(([k], i) => [k, sev[i]]) : []);
     if (sort) entries = [...entries].sort((a, b) => b[1] - a[1]);
     const max = Math.max(1, ...entries.map(e => e[1]));
     return `<div class="hbars">` + entries.map(([k, v]) => `
-      <div class="hrow" data-tip="${esc(k)}: ${plural(v, "answer")} (${pct(v, total)}%)">
+      <div class="hrow" data-tip="${esc(k)}: ${plural(v, "answer")} (${pct(v, total)}%)${sevOf.has(k) ? " · " + LEVELS[sevOf.get(k)] : ""}">
         <div class="lbl">${esc(k)}</div>
-        <div class="track"><div class="fill" style="width:${(100 * v / max).toFixed(1)}%"></div></div>
+        <div class="track"><div class="fill${sevOf.has(k) ? " s" + sevOf.get(k) : ""}" style="width:${(100 * v / max).toFixed(1)}%"></div></div>
         <div class="val">${pct(v, total)}%</div>
       </div>`).join("") + `</div>`;
   }
@@ -408,8 +503,10 @@
       `</div><div class="xlabels">` + entries.map(([k]) => `<span>${esc(k)}</span>`).join("") + `</div>`;
   }
 
-  const LIKERT_COLORS = ["var(--neg-2)", "var(--neg-1)", "var(--mid)", "var(--pos-1)", "var(--pos-2)"];
-  const likertLegend = `<div class="legend">${LIKERT.map((l, i) => `<span><i style="background:${LIKERT_COLORS[i]}"></i>${l}</span>`).join("")}</div>`;
+  // Colored by how good the answer is, so green is always good. For the
+  // "lower is better" statements the colors flip (strongly disagree = green).
+  const LIKERT_COLORS = ["var(--s4)", "var(--s3)", "var(--mid)", "var(--s1)", "var(--s0)"];
+  const likertLegend = `<div class="legend"><span><i style="background:var(--s0)"></i>Best answer</span><span><i style="background:var(--s1)"></i>Good</span><span><i style="background:var(--mid)"></i>Neutral</span><span><i style="background:var(--s3)"></i>Bad</span><span><i style="background:var(--s4)"></i>Worst answer</span></div>`;
 
   function likertRows(list, qs) {
     const out = qs.map(q => {
@@ -417,9 +514,10 @@
       if (!vals.length) return "";
       const c = [1, 2, 3, 4, 5].map(k => vals.filter(v => v === k).length);
       const agree = pct(c[3] + c[4], vals.length);
-      const segs = c.map((v, i) => v ? `<span style="flex:${v};background:${LIKERT_COLORS[i]}" data-tip="${LIKERT[i]}: ${plural(v, "person")} (${pct(v, vals.length)}%)"></span>` : "").join("");
+      const good = q.negative ? pct(c[0] + c[1], vals.length) : agree;   // % giving the good answer
+      const segs = c.map((v, i) => v ? `<span style="flex:${v};background:${LIKERT_COLORS[q.negative ? 4 - i : i]}" data-tip="${LIKERT[i]}: ${plural(v, "person")} (${pct(v, vals.length)}%)"></span>` : "").join("");
       return `<div class="lrow">
-        <div class="lbl"><span>${esc(q.label)}${q.negative ? ` <em style="color:var(--muted);font-style:normal">(lower is better)</em>` : ""}${q.who ? ` <em style="color:var(--muted);font-style:normal">· ${q.who}</em>` : ""}</span><b>${agree}% agree · ${vals.length}</b></div>
+        <div class="lbl"><span>${esc(q.label)}${q.negative ? ` <em style="color:var(--muted);font-style:normal">(lower is better)</em>` : ""}${q.who ? ` <em style="color:var(--muted);font-style:normal">· ${q.who}</em>` : ""}</span><b>${pill(lvl(good, CUTS.pct), `${agree}% agree`)} · ${vals.length}</b></div>
         <div class="stack">${segs}</div>
       </div>`;
     }).join("");
@@ -446,13 +544,13 @@
       return `<button type="button" class="chip" data-role="${r}" aria-pressed="${r === roleFilter}">${r === "All" ? "Everyone" : r + "s"}<span class="n">${n}</span></button>`;
     }).join("");
 
-    const tile = (k, v, sub) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${sub}</div></div>`;
+    const tile = (k, v, sub, l = null) => `<div class="tile${l === null ? "" : " t" + l}"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${l === null ? "" : `<span class="sev s${l}">${LEVELS[l]}</span>`}${sub}</div></div>`;
     const tiles = [
       tile("Responses", s.n, `${plural(s.testers, "tester")}`),
-      tile("Ease of use (SUS)", s.sus === null ? "–" : s.sus.toFixed(1), s.sus === null ? "out of 100" : `${susGrade(s.sus)} · 68 is average`),
-      tile("Would recommend (NPS)", s.nps === null ? "–" : (s.nps > 0 ? "+" : "") + s.nps, s.npsN ? `${npsGrade(s.nps)} · −100 to +100` : "−100 to +100"),
-      tile("Very disappointed", s.disN ? s.veryDis + "%" : "–", "if it vanished · 40%+ is strong"),
-      tile("Prefer TutorLink", s.prefN ? s.prefer + "%" : "–", "over a paper register")
+      tile("Ease of use (SUS)", s.sus === null ? "–" : s.sus.toFixed(1), "68 is average", lvl(s.sus, CUTS.sus)),
+      tile("Would recommend (NPS)", s.nps === null ? "–" : signed(s.nps), "−100 to +100", lvl(s.nps, CUTS.nps)),
+      tile("Very disappointed", s.disN ? s.veryDis + "%" : "–", "if it vanished · 40%+ is strong", s.disN ? lvl(s.veryDis, CUTS.veryDis) : null),
+      tile("Prefer TutorLink", s.prefN ? s.prefer + "%" : "–", "over a paper register", s.prefN ? lvl(s.prefer, CUTS.pct) : null)
     ].join("");
 
     const top = head(chips, last, days) + `<div class="tiles">${tiles}</div>`;
@@ -472,13 +570,18 @@
 
     // Day by day: each day on its own, plus all days together
     const dayRow = (label, l, key) => {
-      const x = stats(l);
-      const broke = l.filter(r => ans(r, "broken")), brokeYes = broke.filter(r => ans(r, "broken").startsWith("Yes")).length;
-      const cells = [label, x.n, x.sus === null ? "–" : x.sus.toFixed(1), x.nps === null ? "–" : (x.nps > 0 ? "+" : "") + x.nps,
-        x.disN ? x.veryDis + "%" : "–", x.prefN ? x.prefer + "%" : "–", broke.length ? pct(brokeYes, broke.length) + "%" : "–"];
+      const x = stats(l), o = opinion(l);
+      const cell = (v, lv, text) => v === null || v === undefined ? "–" : pill(lv, text);
+      const cells = [esc(label), x.n,
+        cell(o.overall, o.level, `${o.overall}`),
+        cell(x.sus, lvl(x.sus, CUTS.sus), x.sus === null ? "" : x.sus.toFixed(1)),
+        cell(x.nps, lvl(x.nps, CUTS.nps), x.nps === null ? "" : signed(x.nps)),
+        x.disN ? pill(lvl(x.veryDis, CUTS.veryDis), x.veryDis + "%") : "–",
+        x.prefN ? pill(lvl(x.prefer, CUTS.pct), x.prefer + "%") : "–",
+        cell(o.brokePct, lvl(-o.brokePct, CUTS.broke), o.brokePct + "%")];
       return `<tr${key ? ` class="pick${key === dayFilter ? " on" : ""}" data-day="${key}" tabindex="0"` : ` class="total"`}>${cells.map(c => `<td>${c}</td>`).join("")}</tr>`;
     };
-    const dayTable = `<div class="table-wrap"><table class="days"><thead><tr><th>Day</th><th>Responses</th><th>Ease of use</th><th>Recommend</th><th>Very disappointed</th><th>Prefer TutorLink</th><th>Something broke</th></tr></thead><tbody>` +
+    const dayTable = sevLegend + `<div class="table-wrap"><table class="days"><thead><tr><th>Day</th><th>Responses</th><th>Overall</th><th>Ease of use</th><th>Recommend</th><th>Very disappointed</th><th>Prefer TutorLink</th><th>Something broke</th></tr></thead><tbody>` +
       days.slice().reverse().map(k => dayRow(longDay(k), byRole.filter(r => dayOf(r.created_at) === k), k)).join("") +
       `</tbody><tfoot>${dayRow("All days", byRole)}</tfoot></table></div>`;
 
@@ -491,20 +594,59 @@
 
     // NPS 0–10
     const npsEntries = Array.from({ length: 11 }, (_, k) => [String(k), list.filter(r => r.nps === k).length]);
-    const npsColor = k => +k >= 9 ? "var(--pos-2)" : +k >= 7 ? "var(--mid)" : "var(--neg-2)";
-    const npsChart = `<div class="legend"><span><i style="background:var(--neg-2)"></i>0–6 Detractors · ${s.det}</span><span><i style="background:var(--mid)"></i>7–8 Passive · ${s.passive}</span><span><i style="background:var(--pos-2)"></i>9–10 Promoters · ${s.prom}</span></div>` +
+    const npsColor = k => `var(--s${npsPersonLvl(+k)})`;
+    const npsChart = `<div class="legend"><span><i style="background:var(--s4)"></i>0–6 Detractors · ${s.det}</span><span><i style="background:var(--s2)"></i>7–8 Passive · ${s.passive}</span><span><i style="background:var(--s0)"></i>9–10 Promoters · ${s.prom}</span></div>` +
       cols(npsEntries, (k, v) => `Scored ${k}: ${plural(v, "person")}`, npsColor);
 
-    // Ease-of-use spread in 10-point bands
+    // Ease-of-use spread in 10-point bands, colored by how good that band is
     const bands = Array.from({ length: 10 }, (_, i) => [String(i * 10), 0]);
     list.forEach(r => { if (r.sus_score !== null && r.sus_score !== undefined) bands[Math.min(9, Math.floor(r.sus_score / 10))][1]++; });
-    const susChart = cols(bands, (k, v) => `Score ${k}–${k === "90" ? 100 : +k + 9}: ${plural(v, "person")}`);
+    const bandLvl = k => lvl(k === "90" ? 100 : +k + 9, CUTS.sus);
+    const susChart = sevLegend + cols(bands, (k, v) => `Score ${k}–${k === "90" ? 100 : +k + 9}: ${plural(v, "person")} · ${LEVELS[bandLvl(k)]}`, k => `var(--s${bandLvl(k)})`);
+
+    // Overall opinion score
+    const o = opinion(list);
+    const scaleRanges = ["80–100", "65–79", "50–64", "35–49", "0–34"];
+    const scale = `<div class="scale" aria-label="Score scale">${LEVELS.map((l, i) =>
+      `<span class="s${i}${o.level === i ? " on" : ""}">${l}<small>${scaleRanges[i]}</small></span>`).join("")}</div>`;
+    const sevRows = items => `<div class="hbars">` + items.map(p => `
+      <div class="hrow" data-tip="${esc(p.tip)}">
+        <div class="lbl">${esc(p.label)}</div>
+        <div class="track"><div class="fill${p.level === null ? "" : " s" + p.level}" style="width:${p.score === null ? "0%;min-width:0" : Math.max(1, p.score).toFixed(1) + "%"}"></div></div>
+        <div class="val">${p.score === null ? "–" : Math.round(p.score)}</div>
+      </div>`).join("") + `</div>`;
+    const partRows = sevRows(o.parts.map(p => ({ ...p, tip: `${p.label}: ${p.shown}${p.level === null ? "" : " · " + LEVELS[p.level]} · ${p.how}` })));
+    const roleRows = sevRows(ROLES.map(r => {
+      const x = opinion(dayList.filter(y => y.role === r));
+      return { label: r + "s", score: x.overall, level: x.level, tip: x.overall === null ? `${r}s: no answers` : `${r}s: ${x.overall} / 100 · ${LEVELS[x.level]}` };
+    }));
+    const dayScores = days.map(k => [k, opinion(byRole.filter(r => dayOf(r.created_at) === k))]);
+    const ovDays = `<div class="cols abs">` + dayScores.map(([k, x]) =>
+      `<div class="col pick${dayFilter !== "All" && dayFilter !== k ? " dim" : ""}" data-day="${k}" data-tip="${longDay(k)}: ${x.overall === null ? "no answers" : x.overall + " / 100 · " + LEVELS[x.level]}"><span style="height:${x.overall === null ? 0 : Math.max(2, x.overall)}%${x.level === null ? "" : `;background:var(--s${x.level})`}"></span></div>`).join("") +
+      `</div><div class="xlabels">` + dayScores.map(([k], i) =>
+      `<span>${dayScores.length <= 5 || i % Math.ceil(dayScores.length / 5) === 0 ? shortDay(k) : ""}</span>`).join("") + `</div>`;
+    const overallCard = `<section class="card wide">
+      <div class="ov">
+        <div>
+          <div class="ov-hero">
+            <div class="ov-num ${o.level === null ? "none" : "s" + o.level}"><b>${o.overall ?? "–"}</b><small>${o.level === null ? "No data" : LEVELS[o.level]}</small></div>
+            <div><h2>Overall opinion score</h2><p>One number out of 100 for how people feel about TutorLink${dayFilter === "All" ? "" : " on this day"}${roleFilter === "All" ? "" : ` (${roleFilter.toLowerCase()}s only)`}. It averages the six parts on the right equally.</p></div>
+          </div>
+          ${scale}
+        </div>
+        <div><h3>What makes up the score</h3>${partRows}</div>
+        <div><h3>By role · ${esc(dayFilter === "All" ? "all days" : shortDay(dayFilter))}</h3>${roleRows}</div>
+      </div>
+      <div class="ov-days"><h3 style="font-size:13.5px;font-weight:600;margin:0 0 12px;color:var(--ink-2)">Overall score per day · out of 100 · tap a bar to see that day</h3>${ovDays}</div>
+    </section>`;
 
     // Role breakdown (all roles, so you can see who answered)
     const roleChart = hbars(ROLES.map(r => [r + "s", dayList.filter(x => x.role === r).length]), dayList.length);
     const when = dayFilter === "All" ? "All days" : longDay(dayFilter);
 
     let html = top;
+
+    html += `<div class="section">Overall opinion · ${esc(when)}</div>` + overallCard;
 
     html += `<div class="section">Day by day</div><div class="grid">`;
     html += card("Responses per day", `${plural(byRole.length, "response")} in total · tap a bar to see that day`, perDay);
@@ -521,7 +663,7 @@
     CHOICE_Q.forEach(q => {
       const c = counts(list, q.id, q.options), t = c.reduce((a, e) => a + e[1], 0);
       if (!t && q.who) return;
-      html += card(esc(q.label), `${q.who ? q.who + " · " : ""}${plural(t, "answer")}`, hbars(c, t));
+      html += card(esc(q.label), `${q.who ? q.who + " · " : ""}${plural(t, "answer")}`, hbars(c, t, false, q.sev));
     });
     MULTI_Q.forEach(q => {
       const answered = list.filter(r => Array.isArray(ans(r, q.id)) && ans(r, q.id).length).length;
@@ -565,7 +707,8 @@
   function table(list) {
     const cols = [
       ["When", r => fmtDate(r.created_at)], ["Role", r => r.role],
-      ["SUS", r => r.sus_score ?? ""], ["NPS", r => r.nps ?? ""],
+      ["SUS", r => r.sus_score ?? "", r => lvl(r.sus_score === null ? null : Number(r.sus_score), CUTS.sus)],
+      ["NPS", r => r.nps ?? "", r => npsPersonLvl(r.nps)],
       ["If it vanished", r => r.disappointment ?? ""], ["Prefers", r => ans(r, "prefer_over_paper") ?? ""],
       ["Broke?", r => (ans(r, "broken") || "").startsWith("Yes") ? "Yes" : (ans(r, "broken") ? "No" : "")],
       ["Time saved", r => ans(r, "minutes_saved") || r.time_saved || ""],
@@ -574,6 +717,7 @@
     return `<div class="table-wrap"><table><thead><tr>${cols.map(c => `<th>${c[0]}</th>`).join("")}</tr></thead><tbody>` +
       list.slice().reverse().map(r => `<tr>${cols.map(c => {
         const v = String(c[1](r));
+        if (c[2] && v !== "") return `<td>${pill(c[2](r), v)}</td>`;
         return `<td${v.length > 60 ? ` title="${esc(v)}"` : ""}>${esc(v.length > 60 ? v.slice(0, 57) + "…" : v)}</td>`;
       }).join("")}</tr>`).join("") + `</tbody></table></div>`;
   }
@@ -649,19 +793,29 @@
     line("  0–6 detractors. NPS = % promoters − % detractors (−100 to +100).");
     line("- 'Very disappointed' (Sean Ellis test): 40%+ answering 'Very disappointed' if the product");
     line("  vanished is a common sign of strong product–market fit.");
+    line("- OVERALL OPINION SCORE (0–100): the average of six parts, each turned into 0–100 and");
+    line("  weighted equally (parts nobody answered are left out):");
+    line("  ease of use (SUS) · would recommend ((NPS + 100) / 2) · would miss it (very = 100,");
+    line("  somewhat = 50, not = 0) · prefers TutorLink (TutorLink = 100, no preference = 50,");
+    line("  paper = 0) · worked without breaking (% nothing broke) · agrees with the look, speed");
+    line("  and role statements (1–5 moved onto 0–100).");
+    line("- RATINGS used throughout: Excellent / Good / OK / Weak / Poor. For 0–100 scores:");
+    line("  80+ Excellent, 65–79 Good, 50–64 OK, 35–49 Weak, under 35 Poor.");
     line();
 
     rule(); line("1. HEADLINE NUMBERS"); rule();
-    const headline = (label, list) => {
-      const x = stats(list);
+    const headline = (label, list, detail) => {
+      const x = stats(list), o = opinion(list);
       line(`${label} (n=${x.n})`);
+      line(`  OVERALL OPINION SCORE: ${o.overall === null ? "n/a" : `${o.overall} / 100 – ${LEVELS[o.level]}`}`);
+      if (detail) o.parts.forEach(p => line(`    - ${p.label}: ${p.score === null ? "n/a" : Math.round(p.score) + " / 100"} (${p.shown}${p.level === null ? "" : ", " + LEVELS[p.level]})`));
       line(`  Average SUS: ${x.sus === null ? "n/a" : x.sus.toFixed(1) + " – " + susGrade(x.sus)}`);
       line(`  NPS: ${x.nps === null ? "n/a" : x.nps} (promoters ${x.prom}, passive ${x.passive}, detractors ${x.det})`);
       line(`  Very disappointed if gone: ${x.disN ? x.veryDis + "%" : "n/a"}`);
       line(`  Prefer TutorLink over paper: ${x.prefN ? x.prefer + "%" : "n/a"}`);
     };
-    headline("EVERYONE", all);
-    ROLES.forEach(r => { const l = all.filter(x => x.role === r); if (l.length) { line(); headline(r.toUpperCase() + "S", l); } });
+    headline("EVERYONE", all, true);
+    ROLES.forEach(r => { const l = all.filter(x => x.role === r); if (l.length) { line(); headline(r.toUpperCase() + "S", l, true); } });
     line();
 
     rule(); line("2. DAY BY DAY (each day on its own, oldest first)"); rule();

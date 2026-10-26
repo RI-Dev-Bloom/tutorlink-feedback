@@ -159,6 +159,24 @@
   th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
   th{position:sticky;top:0;background:var(--paper);font-weight:600;color:var(--ink-2);z-index:1}
   tbody tr:hover{background:var(--hover)}
+  table.days tr.pick{cursor:pointer}
+  table.days tr.pick:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+  table.days tr.on,table.days tr.on:hover{background:var(--accent-soft)}
+  table.days tr.on td:first-child{font-weight:600;color:var(--accent)}
+  table.days tfoot td{font-weight:600;background:var(--paper);border-bottom:0;border-top:1px solid var(--line-2);position:sticky;bottom:0}
+
+  /* Day picker */
+  .filters{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+  .daypick{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--muted)}
+  .daypick select{
+    appearance:none;-webkit-appearance:none;height:34px;padding:0 34px 0 12px;border-radius:999px;
+    border:1px solid var(--line-2);background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' fill='none' stroke='%236B7283' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 12px center;
+    color:var(--ink);font-size:13.5px;cursor:pointer;max-width:100%;
+  }
+  .daypick select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .link{appearance:none;border:0;background:none;padding:0;color:var(--accent);font-size:inherit;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+  .col.pick{cursor:pointer}
+  .col.dim span{opacity:.3}
 
   /* Tooltip */
   .tip{position:fixed;z-index:50;pointer-events:none;background:var(--ink);color:#fff;font-size:12.5px;line-height:1.4;
@@ -264,6 +282,7 @@
   const loginEl = $("login"), dash = $("dash"), tip = $("tip");
   let rows = [];
   let roleFilter = "All";
+  let dayFilter = "All";
 
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const pct = (n, d) => d ? Math.round(100 * n / d) : 0;
@@ -271,6 +290,22 @@
   const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
   const fmtDate = iso => new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   const ans = (r, id) => (r.answers || {})[id];
+
+  // Days use this device's clock (so a day matches the admin's time zone, e.g. South Africa)
+  const pad = n => String(n).padStart(2, "0");
+  const dayKey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const dayOf = iso => dayKey(new Date(iso));
+  const keyDate = k => { const [y, m, d] = k.split("-").map(Number); return new Date(y, m - 1, d); };
+  const shortDay = k => keyDate(k).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  const longDay = k => keyDate(k).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+  // Every day from the first response to the last, including days with none
+  function allDays(list) {
+    const keys = [...new Set(list.map(r => dayOf(r.created_at)))].sort();
+    const out = [];
+    if (!keys.length) return out;
+    for (let d = keyDate(keys[0]), end = keyDate(keys[keys.length - 1]); d <= end; d.setDate(d.getDate() + 1)) out.push(dayKey(d));
+    return out;
+  }
 
   // ---------- Fetching (password is checked inside Supabase) ----------
   async function fetchRows(pw) {
@@ -397,12 +432,17 @@
 
   // ---------- Render ----------
   function render() {
-    const list = roleFilter === "All" ? rows : rows.filter(r => r.role === roleFilter);
+    const inDay = r => dayFilter === "All" || dayOf(r.created_at) === dayFilter;
+    const byRole = roleFilter === "All" ? rows : rows.filter(r => r.role === roleFilter);
+    const dayList = rows.filter(inDay);
+    const list = byRole.filter(inDay);
     const s = stats(list);
     const last = rows.length ? fmtDate(rows[rows.length - 1].created_at) : "none yet";
+    const days = allDays(rows);
+    const dayCount = k => byRole.filter(r => dayOf(r.created_at) === k).length;
 
     const chips = ["All", ...ROLES].map(r => {
-      const n = r === "All" ? rows.length : rows.filter(x => x.role === r).length;
+      const n = r === "All" ? dayList.length : dayList.filter(x => x.role === r).length;
       return `<button type="button" class="chip" data-role="${r}" aria-pressed="${r === roleFilter}">${r === "All" ? "Everyone" : r + "s"}<span class="n">${n}</span></button>`;
     }).join("");
 
@@ -415,28 +455,39 @@
       tile("Prefer TutorLink", s.prefN ? s.prefer + "%" : "–", "over a paper register")
     ].join("");
 
-    if (!list.length) {
-      dash.innerHTML = head(chips, last) + `<div class="tiles">${tiles}</div>` + card("No responses yet", "", `<p class="empty">When testers send the form, their answers show up here. Press Refresh to check again.</p>`, true);
+    const top = head(chips, last, days) + `<div class="tiles">${tiles}</div>`;
+
+    if (!rows.length) {
+      dash.innerHTML = top + card("No responses yet", "", `<p class="empty">When testers send the form, their answers show up here. Press Refresh to check again.</p>`, true);
       return;
     }
 
-    // Responses per day
-    const byDay = new Map();
-    list.forEach(r => { const d = r.created_at.slice(0, 10); byDay.set(d, (byDay.get(d) || 0) + 1); });
-    const days = [...byDay.keys()].sort();
-    const dayEntries = [];
-    if (days.length) {
-      for (let d = new Date(days[0] + "T00:00:00Z"); d <= new Date(days[days.length - 1] + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + 1)) {
-        const key = d.toISOString().slice(0, 10);
-        dayEntries.push([key, byDay.get(key) || 0]);
-      }
-    }
-    const shortDay = k => new Date(k + "T00:00:00Z").toLocaleDateString(undefined, { day: "numeric", month: "short", timeZone: "UTC" });
-    const perDay = `<div class="cols">` + dayEntries.map(([k, v]) => {
-      const max = Math.max(1, ...dayEntries.map(e => e[1]));
-      return `<div class="col" data-tip="${shortDay(k)}: ${plural(v, "response")}"><span style="height:${(100 * v / max).toFixed(1)}%"></span></div>`;
-    }).join("") + `</div><div class="xlabels">` + dayEntries.map(([k], i) =>
+    // Responses per day (always shows every day; the picked day is highlighted, tap a bar to pick it)
+    const dayEntries = days.map(k => [k, dayCount(k)]);
+    const dayMax = Math.max(1, ...dayEntries.map(e => e[1]));
+    const perDay = `<div class="cols">` + dayEntries.map(([k, v]) =>
+      `<div class="col pick${dayFilter !== "All" && dayFilter !== k ? " dim" : ""}" data-day="${k}" data-tip="${longDay(k)}: ${plural(v, "response")}"><span style="height:${(100 * v / dayMax).toFixed(1)}%"></span></div>`).join("") +
+      `</div><div class="xlabels">` + dayEntries.map(([k], i) =>
       `<span>${dayEntries.length <= 5 || i % Math.ceil(dayEntries.length / 5) === 0 ? shortDay(k) : ""}</span>`).join("") + `</div>`;
+
+    // Day by day: each day on its own, plus all days together
+    const dayRow = (label, l, key) => {
+      const x = stats(l);
+      const broke = l.filter(r => ans(r, "broken")), brokeYes = broke.filter(r => ans(r, "broken").startsWith("Yes")).length;
+      const cells = [label, x.n, x.sus === null ? "–" : x.sus.toFixed(1), x.nps === null ? "–" : (x.nps > 0 ? "+" : "") + x.nps,
+        x.disN ? x.veryDis + "%" : "–", x.prefN ? x.prefer + "%" : "–", broke.length ? pct(brokeYes, broke.length) + "%" : "–"];
+      return `<tr${key ? ` class="pick${key === dayFilter ? " on" : ""}" data-day="${key}" tabindex="0"` : ` class="total"`}>${cells.map(c => `<td>${c}</td>`).join("")}</tr>`;
+    };
+    const dayTable = `<div class="table-wrap"><table class="days"><thead><tr><th>Day</th><th>Responses</th><th>Ease of use</th><th>Recommend</th><th>Very disappointed</th><th>Prefer TutorLink</th><th>Something broke</th></tr></thead><tbody>` +
+      days.slice().reverse().map(k => dayRow(longDay(k), byRole.filter(r => dayOf(r.created_at) === k), k)).join("") +
+      `</tbody><tfoot>${dayRow("All days", byRole)}</tfoot></table></div>`;
+
+    if (!list.length) {
+      dash.innerHTML = top + `<div class="section">Day by day</div><div class="grid">` +
+        card("Day by day", "Tap a day to see only that day", dayTable, true) + `</div>` +
+        card("Nothing for this choice", "", `<p class="empty">No ${roleFilter === "All" ? "" : roleFilter.toLowerCase() + " "}responses ${dayFilter === "All" ? "yet" : "on " + longDay(dayFilter)}.</p>`, true);
+      return;
+    }
 
     // NPS 0–10
     const npsEntries = Array.from({ length: 11 }, (_, k) => [String(k), list.filter(r => r.nps === k).length]);
@@ -449,14 +500,19 @@
     list.forEach(r => { if (r.sus_score !== null && r.sus_score !== undefined) bands[Math.min(9, Math.floor(r.sus_score / 10))][1]++; });
     const susChart = cols(bands, (k, v) => `Score ${k}–${k === "90" ? 100 : +k + 9}: ${plural(v, "person")}`);
 
-    // Role breakdown (always everyone, so you can see who answered)
-    const roleChart = hbars(ROLES.map(r => [r + "s", rows.filter(x => x.role === r).length]), rows.length);
+    // Role breakdown (all roles, so you can see who answered)
+    const roleChart = hbars(ROLES.map(r => [r + "s", dayList.filter(x => x.role === r).length]), dayList.length);
+    const when = dayFilter === "All" ? "All days" : longDay(dayFilter);
 
-    let html = head(chips, last) + `<div class="tiles">${tiles}</div>`;
+    let html = top;
 
-    html += `<div class="section">Overview</div><div class="grid">`;
-    html += card("Responses per day", plural(list.length, "response"), perDay);
-    html += card("Who answered", "All responses, by role", roleChart);
+    html += `<div class="section">Day by day</div><div class="grid">`;
+    html += card("Responses per day", `${plural(byRole.length, "response")} in total · tap a bar to see that day`, perDay);
+    html += card("Who answered", `${when} · all roles`, roleChart);
+    html += card("Day by day", "Each day on its own, newest first. Tap a day to see only that day. The bottom row is all days together.", dayTable, true);
+    html += `</div>`;
+
+    html += `<div class="section">Overview · ${esc(when)}</div><div class="grid">`;
     html += card("How likely to recommend", `0 = not at all, 10 = definitely · ${plural(s.npsN, "answer")}`, npsChart);
     html += card("Ease-of-use score spread", "SUS score per person, out of 100 (68 is average)", susChart);
     html += `</div>`;
@@ -495,8 +551,15 @@
     dash.innerHTML = html;
   }
 
-  function head(chips, last) {
-    return `<div class="head"><div><h1>Feedback results</h1><p>Last response: ${esc(last)}</p></div><div class="chips" role="group" aria-label="Filter by role">${chips}</div></div>`;
+  function head(chips, last, days) {
+    const opts = [`<option value="All">All days</option>`, ...days.slice().reverse().map(k =>
+      `<option value="${k}"${k === dayFilter ? " selected" : ""}>${longDay(k)} (${rows.filter(r => dayOf(r.created_at) === k).length})</option>`)].join("");
+    const title = dayFilter === "All" ? "Feedback results" : longDay(dayFilter);
+    return `<div class="head"><div><h1>${esc(title)}</h1><p>${dayFilter === "All" ? "All days together" : `Only this day · <button type="button" class="link" data-day="All">show all days</button>`} · Last response: ${esc(last)}</p></div>
+      <div class="filters">
+        <label class="daypick"><span>Day</span><select id="daySel" aria-label="Pick a day">${opts}</select></label>
+        <div class="chips" role="group" aria-label="Filter by role">${chips}</div>
+      </div></div>`;
   }
 
   function table(list) {
@@ -517,9 +580,19 @@
 
   dash.addEventListener("click", e => {
     const c = e.target.closest(".chip");
-    if (!c) return;
-    roleFilter = c.dataset.role;
-    render();
+    if (c) { roleFilter = c.dataset.role; render(); return; }
+    const d = e.target.closest("[data-day]");
+    if (d) {
+      dayFilter = d.dataset.day === dayFilter && d.dataset.day !== "All" ? "All" : d.dataset.day;  // tap the picked day again to go back
+      render();
+      if (dayFilter !== "All") scrollTo({ top: 0, behavior: "smooth" });
+    }
+  });
+  dash.addEventListener("keydown", e => {
+    if (e.key === "Enter" && e.target.matches("tr[data-day]")) e.target.click();
+  });
+  dash.addEventListener("change", e => {
+    if (e.target.id === "daySel") { dayFilter = e.target.value; render(); }
   });
 
   // ---------- Tooltip ----------
@@ -556,7 +629,7 @@
     rule();
     line(`Exported: ${new Date().toISOString()}`);
     line(`Responses: ${s.n} from ${s.testers} testers`);
-    line(`Date range: ${all.length ? all[0].created_at.slice(0, 10) + " to " + all[all.length - 1].created_at.slice(0, 10) : "n/a"}`);
+    line(`Date range: ${all.length ? dayOf(all[0].created_at) + " to " + dayOf(all[all.length - 1].created_at) : "n/a"} (days use the exporter's local time zone)`);
     line();
     line("ABOUT THIS FILE");
     line("TutorLink is an attendance / check-in app being piloted at a campus (Rosebank).");
@@ -591,7 +664,18 @@
     ROLES.forEach(r => { const l = all.filter(x => x.role === r); if (l.length) { line(); headline(r.toUpperCase() + "S", l); } });
     line();
 
-    rule(); line("2. MULTIPLE-CHOICE ANSWERS (everyone, then by role)"); rule();
+    rule(); line("2. DAY BY DAY (each day on its own, oldest first)"); rule();
+    allDays(all).forEach(k => {
+      const l = all.filter(r => dayOf(r.created_at) === k);
+      if (!l.length) { line(`${longDay(k)} (${k}): no responses`); line(); return; }
+      headline(`${longDay(k)} (${k})`, l);
+      line(`  By role: ${ROLES.map(r => `${r}s ${l.filter(x => x.role === r).length}`).join(", ")}`);
+      const broke = l.filter(r => ans(r, "broken"));
+      if (broke.length) line(`  Something broke: ${pct(broke.filter(r => ans(r, "broken").startsWith("Yes")).length, broke.length)}%`);
+      line();
+    });
+
+    rule(); line("3. MULTIPLE-CHOICE ANSWERS (everyone, then by role)"); rule();
     [...CHOICE_Q, ...MULTI_Q].forEach(q => {
       if (!all.some(r => ans(r, q.id) !== undefined)) return;
       line(`Q: ${q.label}${q.who ? " [" + q.who + " only]" : ""}${MULTI_Q.includes(q) ? " [could pick several]" : ""}`);
@@ -603,7 +687,7 @@
       line();
     });
 
-    rule(); line("3. AGREE / DISAGREE STATEMENTS (1 = Strongly disagree … 5 = Strongly agree)"); rule();
+    rule(); line("4. AGREE / DISAGREE STATEMENTS (1 = Strongly disagree … 5 = Strongly agree)"); rule();
     LIKERT_Q.forEach(q => {
       const vals = all.map(r => ans(r, q.id)).filter(v => typeof v === "number");
       if (!vals.length) return;
@@ -614,7 +698,7 @@
       line();
     });
 
-    rule(); line("4. WRITTEN ANSWERS (verbatim, role in brackets)"); rule();
+    rule(); line("5. WRITTEN ANSWERS (verbatim, role in brackets)"); rule();
     TEXT_Q.forEach(q => {
       const items = all.filter(r => typeof ans(r, q.id) === "string" && ans(r, q.id).trim());
       line(`Q: ${q.label} (${items.length} answers)`);
@@ -623,7 +707,7 @@
       line();
     });
 
-    rule(); line("5. EVERY RESPONSE (one block per person)"); rule();
+    rule(); line("6. EVERY RESPONSE (one block per person)"); rule();
     all.forEach((r, i) => {
       line(`#${i + 1} | ${r.created_at} | ${r.role} | respondent ${String(r.respondent_id || "").slice(0, 8)}`);
       line(`  SUS ${r.sus_score ?? "n/a"} | NPS ${r.nps ?? "n/a"} (${r.nps_group || "n/a"}) | If gone: ${r.disappointment || "n/a"}`);

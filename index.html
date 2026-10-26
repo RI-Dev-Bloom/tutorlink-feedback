@@ -1,0 +1,672 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>TutorLink Feedback</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<!--
+  ============================================================
+  HOW RESPONSES ARE SAVED (Supabase)
+  ============================================================
+  GitHub Pages only hosts the page. The answers are sent to a
+  Supabase table, where you can see and count them.
+
+  1. In Supabase, open SQL Editor and run this once:
+
+     create table public.pilot_feedback (
+       id uuid primary key default gen_random_uuid(),
+       created_at timestamptz not null default now(),
+       respondent_id uuid,
+       role text not null,
+       sus_score numeric(5,1),
+       nps smallint,
+       nps_group text,
+       disappointment text,
+       time_saved text,
+       answers jsonb not null
+     );
+
+     alter table public.pilot_feedback enable row level security;
+
+     create policy "Testers can send feedback"
+       on public.pilot_feedback for insert
+       to anon, authenticated
+       with check (true);
+
+     There is no "select" policy on purpose: testers can send
+     answers, but nobody can read them from the page. You read
+     them on admin.html (password checked inside Supabase, see
+     setup.sql) or in the Supabase dashboard (Table Editor).
+
+  2. Paste your Project URL and anon/publishable key into CONFIG
+     in the script at the bottom of this file. That key is meant
+     to be public; the policy above is what keeps the data safe.
+     Never put the service_role key in this file.
+
+  Until CONFIG is filled in, the page runs in preview mode and
+  only keeps answers in your own browser.
+
+  ------------------------------------------------------------
+  YOUR HEADLINE NUMBERS (run in SQL Editor any time)
+  ------------------------------------------------------------
+     select
+       count(*)                                   as responses,
+       count(distinct respondent_id)              as testers,
+       round(avg(sus_score), 1)                   as avg_sus,
+       round(100.0 * avg((nps_group = 'promoter')::int)
+           - 100.0 * avg((nps_group = 'detractor')::int)) as nps,
+       round(100.0 * avg((disappointment = 'Very disappointed')::int)) as pct_very_disappointed
+     from public.pilot_feedback;
+
+     -- % who'd rather use TutorLink than a paper register:
+     select round(100.0 * avg(((answers->>'prefer_over_paper') = 'TutorLink')::int)) as pct_prefer_tutorlink
+     from public.pilot_feedback;
+
+     -- Minutes saved per class (tutors and lecturers):
+     select answers->>'minutes_saved' as minutes_saved, count(*)
+     from public.pilot_feedback where answers ? 'minutes_saved' group by 1 order by 2 desc;
+
+     -- Which new app ideas people want most:
+     select idea, count(*) as votes
+     from public.pilot_feedback, jsonb_array_elements_text(answers->'wanted_features') as idea
+     group by idea order by votes desc;
+
+     -- Same numbers split by role:
+     select role, count(*) as responses, round(avg(sus_score), 1) as avg_sus
+     from public.pilot_feedback group by role order by role;
+  ============================================================
+-->
+<style>
+  :root{
+    --paper:#FAFAFB;
+    --surface:#FFFFFF;
+    --ink:#141A29;
+    --ink-2:#3B4254;
+    --muted:#6B7283;
+    --line:#E7E9EE;
+    --line-2:#D6DAE2;
+    --line-3:#B9C0CD;
+    --hover:#F3F5F9;
+    --accent:#2E5BE8;
+    --accent-soft:#EEF2FD;
+    --error:#C0362C;
+    --r:12px;
+    --ease:cubic-bezier(.16,1,.3,1);
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;background:var(--paper);color:var(--ink);overflow-x:hidden;
+    font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;
+  }
+  [hidden]{display:none !important}
+  button{font:inherit}
+
+  /* Top bar */
+  .bar{
+    position:sticky;top:0;z-index:10;
+    background:rgba(250,250,251,.86);
+    -webkit-backdrop-filter:saturate(1.4) blur(12px);backdrop-filter:saturate(1.4) blur(12px);
+    border-bottom:1px solid var(--line);
+  }
+  .bar-in{max-width:640px;margin:0 auto;padding:0 20px;height:52px;display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:15px;letter-spacing:-.01em}
+  .count{font-size:13.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .progress{position:absolute;left:0;right:0;bottom:-1px;height:2px}
+  .progress span{display:block;height:100%;width:0;background:var(--accent);transition:width .6s var(--ease)}
+
+  /* Slides */
+  .stage{position:relative;max-width:640px;margin:0 auto;overflow-x:hidden;overflow-x:clip}
+  .slide{
+    display:flex;flex-direction:column;justify-content:center;
+    min-height:calc(100vh - 53px);min-height:calc(100svh - 53px);
+    padding:40px 20px 72px;
+  }
+  .slide.leaving{position:absolute;top:0;left:0;right:0;pointer-events:none}
+  .slide-in{width:100%}
+
+  .question{
+    font-size:28px;line-height:1.28;letter-spacing:-.022em;font-weight:600;
+    margin:0 0 28px;max-width:30ch;text-wrap:balance;
+  }
+  .question:focus{outline:none}
+  .question.hero{font-size:40px;line-height:1.1;letter-spacing:-.03em;max-width:16ch;margin-bottom:16px}
+  .lead{margin:0 0 32px;font-size:17px;color:var(--ink-2)}
+
+  /* Answer rows: rounded edges, hairline borders */
+  .opts{display:grid;gap:8px}
+  .opt{
+    position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;
+    width:100%;min-height:54px;padding:12px 16px;
+    border:1px solid var(--line-2);border-radius:var(--r);background:var(--surface);
+    color:var(--ink);font-size:16px;text-align:left;cursor:pointer;
+    -webkit-tap-highlight-color:transparent;
+    transition:background-color .22s var(--ease),border-color .22s var(--ease),color .22s var(--ease),transform .14s ease;
+  }
+  @media (hover:hover){ .opt:hover{border-color:var(--line-3)} }
+  .opt:active{transform:scale(.985)}
+  .opt:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .opt .tick{flex:none;width:18px;height:18px;opacity:0;transform:scale(.5);transition:opacity .2s ease,transform .45s var(--ease)}
+  .opt[aria-checked="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+  .opt[aria-checked="true"] .tick{opacity:1;transform:none}
+
+  .opt.multi{justify-content:flex-start}
+  .box{flex:none;width:18px;height:18px;border:1.5px solid var(--line-2);border-radius:5px;display:grid;place-items:center;background:var(--surface);transition:background-color .2s var(--ease),border-color .2s var(--ease)}
+  .box svg{opacity:0;transform:scale(.5);transition:opacity .15s ease,transform .4s var(--ease)}
+  .opt.multi[aria-checked="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--ink)}
+  .opt.multi[aria-checked="true"] .box{background:var(--accent);border-color:var(--accent)}
+  .opt.multi[aria-checked="true"] .box svg{opacity:1;transform:none}
+
+  /* 0–10 scale: rounded outside, sharp hairlines inside */
+  .nps{display:grid;grid-template-columns:repeat(11,1fr);border:1px solid var(--line-2);border-radius:var(--r);overflow:hidden;background:var(--surface)}
+  .nps button{
+    appearance:none;border:0;background:transparent;height:56px;min-width:0;padding:0;
+    font-size:15px;color:var(--ink-2);cursor:pointer;font-variant-numeric:tabular-nums;
+    -webkit-tap-highlight-color:transparent;
+    transition:background-color .22s var(--ease),color .22s var(--ease);
+  }
+  .nps button + button{border-left:1px solid var(--line)}
+  @media (hover:hover){ .nps button:hover{background:var(--hover)} }
+  .nps button[aria-checked="true"]{background:var(--accent);color:#fff;font-weight:500}
+  .nps button:focus-visible{outline:none;box-shadow:inset 0 0 0 2px var(--accent)}
+  .nps button[aria-checked="true"]:focus-visible{box-shadow:inset 0 0 0 2px rgba(255,255,255,.75)}
+
+  /* Text answers (16px stops phones zooming in) */
+  .field{
+    display:block;width:100%;font:inherit;font-size:16px;color:var(--ink);background:var(--surface);
+    border:1px solid var(--line-2);border-radius:var(--r);padding:14px 16px;line-height:1.5;
+    transition:border-color .2s var(--ease),box-shadow .2s var(--ease);
+  }
+  textarea.field{min-height:140px;resize:vertical}
+  .field::placeholder{color:#9AA0AE}
+  .field:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+
+  /* Back / next */
+  .actions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:28px;min-height:48px}
+  .icon-btn{
+    width:48px;height:48px;border-radius:var(--r);border:1px solid var(--line-2);background:var(--surface);
+    color:var(--ink-2);display:grid;place-items:center;cursor:pointer;padding:0;
+    transition:background-color .15s ease,border-color .15s ease;
+  }
+  @media (hover:hover){ .icon-btn:hover{background:var(--hover);border-color:var(--line-3)} }
+  .icon-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .icon-btn.off{visibility:hidden}
+  .btn{
+    appearance:none;border:0;height:48px;padding:0 24px;border-radius:var(--r);
+    background:var(--ink);color:#fff;font-size:15px;font-weight:500;cursor:pointer;
+    transition:background-color .15s ease,opacity .3s var(--ease),transform .4s var(--ease);
+  }
+  @media (hover:hover){ .btn:hover{background:#252D41} }
+  .btn:active{transform:scale(.98)}
+  .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .btn[disabled]{opacity:.35;cursor:default}
+  .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line-2)}
+  @media (hover:hover){ .btn.ghost:hover{background:var(--hover)} }
+  .actions [data-act="next"]{opacity:0;transform:translateY(6px);pointer-events:none}
+  .actions [data-act="next"][data-visible="true"]{opacity:1;transform:none;pointer-events:auto}
+  .actions [data-act="next"][data-visible="true"][disabled]{opacity:.35;pointer-events:none}
+  .send-err{margin:14px 0 0;font-size:14px;color:var(--error)}
+
+  /* Sent */
+  .mark{width:56px;height:56px;margin-bottom:24px;color:var(--accent)}
+  .mark svg{width:56px;height:56px;display:block}
+  .mark circle{fill:none;stroke:currentColor;stroke-width:1.5;stroke-dasharray:151;stroke-dashoffset:151;animation:draw .8s var(--ease) .1s forwards}
+  .mark path{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:32;stroke-dashoffset:32;animation:draw .5s var(--ease) .5s forwards}
+  @keyframes draw{to{stroke-dashoffset:0}}
+  .preview{margin:32px 0 0;padding:14px 16px;border:1px dashed var(--line-2);border-radius:var(--r);font-size:13.5px;color:var(--muted)}
+
+  @media (max-width:560px){
+    .bar-in{padding:0 16px}
+    .slide{padding:28px 16px 56px}
+    .question{font-size:23px;margin-bottom:22px}
+    .question.hero{font-size:32px}
+    .lead{font-size:16px}
+    .nps button{font-size:14px;height:52px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{transition:none !important;animation:none !important}
+    .mark circle,.mark path{stroke-dashoffset:0}
+  }
+</style>
+</head>
+<body>
+  <header class="bar">
+    <div class="bar-in">
+      <div class="brand">
+        <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><rect x=".5" y=".5" width="21" height="21" rx="6" fill="#141A29"/><path d="M7 7.6h8M11 7.6v7.4" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+        TutorLink
+      </div>
+      <div class="count" id="count" aria-live="polite"></div>
+    </div>
+    <div class="progress" aria-hidden="true"><span id="bar"></span></div>
+  </header>
+
+  <main class="stage" id="stage">
+    <noscript><section class="slide"><h1 class="question">This form needs JavaScript turned on to work.</h1></section></noscript>
+  </main>
+
+<script>
+(() => {
+  // ---------- Settings: fill these in to collect responses ----------
+  const CONFIG = {
+    supabaseUrl: "https://aigzawebapfohpkbxlcp.supabase.co",
+    supabaseKey: "sb_publishable_5iwKpz0kHNx52TJeFz5V5A_SCAkP7EV",  // publishable key (meant to be public)
+    table: "pilot_feedback"
+  };
+
+  // ---------- Questions ----------
+  // Ease of use: plain-English version of the standard SUS. It keeps the same
+  // 10-statement layout, 5-point scale and positive/negative order, so it's
+  // scored the same way (approach from the Simplified SUS, Holden 2020).
+  // Odd statements are positive, even ones negative. Keep that order.
+  const SUS = [
+    "I would like to use TutorLink often.",
+    "TutorLink was more complicated than it needed to be.",
+    "TutorLink was easy to use.",
+    "I would need help from a technical person to use TutorLink.",
+    "The different parts of TutorLink worked well together.",
+    "Parts of TutorLink were confusing.",
+    "Most people would learn to use TutorLink very quickly.",
+    "TutorLink was awkward to use.",
+    "I felt confident using TutorLink.",
+    "I had to learn a lot before I could use TutorLink."
+  ];
+  const LIKERT = ["Strongly disagree", "Disagree", "Neutral", "Agree", "Strongly agree"];
+
+  const STAFF = ["Tutor", "Lecturer", "Admin"];
+  const CLASS_STAFF = ["Tutor", "Lecturer"];
+  const isStudent = a => a.role === "Student";
+
+  // Ideas people can pick from, by role (for the "what would help you" question)
+  const IDEAS = {
+    Student:  ["Reminders before assignments are due", "My timetable on my phone", "My marks and progress in one place", "Campus notices and updates"],
+    Tutor:    ["Reminders for students before work is due", "A timetable that updates itself", "Planning and notes for my sessions", "Campus notices and updates"],
+    Lecturer: ["Automatic submission reminders for students", "A timetable system that adjusts as campus grows", "Booking venues and rooms", "Class announcements"],
+    Admin:    ["A timetable system that adjusts as campus grows", "Booking venues and rooms", "Automatic submission reminders for students", "Reports for management"]
+  };
+
+  // roles: only shown to these roles. No roles = everyone sees it.
+  const QUESTIONS = [
+    { id: "role", type: "choice", text: "What’s your role?", options: ["Student", "Tutor", "Lecturer", "Admin"] },
+    { id: "attendance_before", roles: STAFF, type: "multi", optional: true, text: "Before TutorLink, how did you take attendance?",
+      options: ["Paper register", "Excel or Google Sheets", "Microsoft Forms or Google Forms", "WhatsApp", "Something else", "I don’t take attendance"], exclusive: "I don’t take attendance" },
+
+    // Ease of use (everyone)
+    ...SUS.map((t, i) => ({ id: `sus_${i + 1}`, type: "likert", text: t })),
+
+    // Look and feel (everyone)
+    { id: "look_professional", type: "likert", text: "TutorLink looks professional and modern." },
+
+    // Does it work (everyone)
+    { id: "fast", type: "likert", text: "TutorLink was fast. Nothing took long to load." },
+    { id: "broken", type: "choice", text: "Did anything break or not work properly?", options: ["No, everything worked", "Yes, something didn’t work"] },
+    { id: "broken_what", type: "text", optional: true, text: "What didn’t work?", placeholder: "Tell us what happened",
+      showIf: a => a.broken === "Yes, something didn’t work" },
+
+    // Students only
+    { id: "checkin_easy",    roles: ["Student"], type: "likert", text: "Checking in to a session was quick and easy." },
+    { id: "attendance_view", roles: ["Student"], type: "likert", text: "Seeing my attendance on my phone helps me keep up." },
+
+    // Tutors and lecturers only
+    { id: "start_checkin_easy", roles: CLASS_STAFF, type: "likert", text: "Starting a check-in was easy." },
+    { id: "minutes_saved", roles: CLASS_STAFF, type: "choice", text: "Compared to a paper register, how much time does TutorLink save you per class?",
+      options: ["None", "1 to 2 minutes", "3 to 5 minutes", "6 to 10 minutes", "More than 10 minutes"] },
+    { id: "trust_numbers", roles: CLASS_STAFF, type: "likert", text: "I trust the attendance numbers in TutorLink." },
+
+    // Admin only
+    { id: "admin_glance", roles: ["Admin"], type: "likert", text: "I can see what’s happening in tutoring at a glance." },
+    { id: "time_saved", roles: ["Admin"], type: "choice", text: "How much time would TutorLink save you each week?",
+      options: ["None", "Less than 15 minutes", "15 to 30 minutes", "30 to 60 minutes", "1 to 2 hours", "More than 2 hours"] },
+    { id: "look_trust", roles: ["Admin"], type: "likert", text: "I trust TutorLink to keep student information safe." },
+
+    // All staff
+    { id: "spot_students", roles: STAFF, type: "likert", text: "TutorLink makes it easier to spot students who need help." },
+
+    // The big ones (everyone)
+    { id: "prefer_over_paper", type: "choice", options: ["TutorLink", "Paper register", "No preference"],
+      text: a => isStudent(a) ? "Would you rather check in with TutorLink or a paper register?" : "Would you rather take attendance with TutorLink or a paper register?" },
+    { id: "nps", type: "nps",
+      text: a => isStudent(a) ? "How likely are you to recommend TutorLink to a classmate?" : "How likely are you to recommend TutorLink to a colleague at another campus?" },
+    { id: "disappointment", type: "choice", text: "If TutorLink disappeared tomorrow, how would you feel?",
+      options: ["Very disappointed", "Somewhat disappointed", "Not disappointed"] },
+
+    // Campus and future ideas (everyone)
+    { id: "stay_organised", type: "choice", text: "Do you think an app for campus life would help you stay organised?", options: ["Yes", "Maybe", "No"] },
+    { id: "wanted_features", type: "multi", text: "Which of these would make campus easier for you?",
+      options: a => [...(IDEAS[a.role] || IDEAS.Student), "None of these"], exclusive: "None of these" },
+    { id: "to_fix", type: "text", optional: true, text: "If you could change one thing about TutorLink, what would it be?", placeholder: "Type your answer" },
+    { id: "app_idea", type: "text", optional: true, text: "Is there a problem at Rosebank that an app could fix? What would it do?", placeholder: "Type your idea" },
+    { id: "final_thoughts", type: "text", optional: true, text: "Any final thoughts?", placeholder: "Type your answer" }
+  ];
+
+  // ---------- Setup ----------
+  const byId = Object.fromEntries(QUESTIONS.map(q => [q.id, q]));
+  const DRAFT_KEY = "tutorlink-feedback-draft-v2";
+  const ID_KEY = "tutorlink-feedback-respondent";
+  const EASE = "cubic-bezier(.16,1,.3,1)";
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const finePointer = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+
+  const stage = document.getElementById("stage");
+  const countEl = document.getElementById("count");
+  const barEl = document.getElementById("bar");
+
+  const TICK = '<svg class="tick" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 10.5 8.3 13.8 15 6.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const BOX = '<span class="box" aria-hidden="true"><svg viewBox="0 0 12 12" width="11" height="11"><path d="M2.5 6.2 5 8.6 9.5 3.6" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+  const BACK = '<svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  let answers = {};
+  let resumeIdx = 0;
+  let busy = false;
+  let lastPreview = false;
+
+  const flow = () => QUESTIONS.filter(q => (!q.roles || q.roles.includes(answers.role)) && (!q.showIf || q.showIf(answers)));
+  const textOf = q => typeof q.text === "function" ? q.text(answers) : q.text;
+  const optionsOf = q => typeof q.options === "function" ? q.options(answers) : q.options;
+  const valueFor = (q, k) => q.type === "likert" ? k + 1 : q.type === "nps" ? k : optionsOf(q)[k];
+  const isAnswered = q => {
+    const v = answers[q.id];
+    if (Array.isArray(v)) return v.length > 0;
+    if (typeof v === "string") return v.trim() !== "";
+    return v !== undefined && v !== null;
+  };
+
+  // ---------- Storage (wrapped: browsers can block it) ----------
+  const saveDraft = i => { try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ answers, idx: i })); } catch (e) {} };
+  const clearDraft = () => { try { localStorage.removeItem(DRAFT_KEY); } catch (e) {} };
+  const loadDraft = () => { try { return JSON.parse(localStorage.getItem(DRAFT_KEY) || "null"); } catch (e) { return null; } };
+
+  // Anonymous random ID kept in this browser, so repeat responses from the same
+  // person can be told apart from new testers. It isn't linked to who they are.
+  function respondentId() {
+    const make = () => (crypto.randomUUID ? crypto.randomUUID() :
+      "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)));
+    try {
+      let id = localStorage.getItem(ID_KEY);
+      if (!id) { id = make(); localStorage.setItem(ID_KEY, id); }
+      return id;
+    } catch (e) { return make(); }
+  }
+
+  // ---------- Slides ----------
+  function makeSlide(i, html) {
+    const s = document.createElement("section");
+    s.className = "slide";
+    s.dataset.i = String(i);
+    s.innerHTML = `<div class="slide-in">${html}</div>`;
+    return s;
+  }
+
+  function welcomeSlide() {
+    return makeSlide(-1, `
+      <h1 class="question hero a" tabindex="-1">How did TutorLink work for you?</h1>
+      <p class="lead a">It’s anonymous and takes about 5 minutes.</p>
+      <div class="a"><button type="button" class="btn" data-act="start">${resumeIdx > 0 ? "Continue" : "Start"}</button></div>`);
+  }
+
+  function doneSlide(i) {
+    return makeSlide(i, `
+      <div class="mark a"><svg viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="24"/><path d="M16 27l7 7 13-14"/></svg></div>
+      <h1 class="question a" tabindex="-1">Feedback sent</h1>
+      <p class="lead a">Thanks for testing TutorLink.</p>`);
+  }
+
+  function questionSlide(i) {
+    const q = flow()[i];
+    let body = "";
+    if (q.type === "choice" || q.type === "likert") {
+      const opts = q.type === "likert" ? LIKERT : optionsOf(q);
+      body = `<div class="opts" role="radiogroup" aria-labelledby="qh">` + opts.map((o, k) =>
+        `<button type="button" class="opt a" role="radio" aria-checked="${answers[q.id] === valueFor(q, k)}" data-k="${k}"><span>${o}</span>${TICK}</button>`).join("") + `</div>`;
+    } else if (q.type === "multi") {
+      const cur = answers[q.id] || [];
+      body = `<div class="opts" role="group" aria-labelledby="qh">` + optionsOf(q).map((o, k) =>
+        `<button type="button" class="opt multi a" role="checkbox" aria-checked="${cur.includes(o)}" data-k="${k}">${BOX}<span>${o}</span></button>`).join("") + `</div>`;
+    } else if (q.type === "nps") {
+      body = `<div class="nps a" role="radiogroup" aria-labelledby="qh">` + Array.from({ length: 11 }, (_, k) =>
+        `<button type="button" role="radio" aria-checked="${answers[q.id] === k}" data-k="${k}" aria-label="${k} out of 10">${k}</button>`).join("") + `</div>`;
+    } else if (q.type === "text") {
+      body = `<textarea class="field a" rows="4" aria-labelledby="qh" placeholder="${q.placeholder}"></textarea>`;
+    } else if (q.type === "input") {
+      body = `<input class="field a" type="text" autocomplete="name" aria-labelledby="qh" placeholder="${q.placeholder}">`;
+    }
+    const s = makeSlide(i, `
+      <h1 class="question a" id="qh" tabindex="-1">${textOf(q)}</h1>
+      ${body}
+      <div class="actions a">
+        <button type="button" class="icon-btn${i === 0 ? " off" : ""}" data-act="back" aria-label="Previous question">${BACK}</button>
+        <button type="button" class="btn" data-act="next"></button>
+      </div>
+      <p class="send-err" hidden>Couldn’t send. Check your connection and try again.</p>`);
+    const field = s.querySelector(".field");
+    if (field) field.value = answers[q.id] || "";
+    refreshActions(s, i);
+    return s;
+  }
+
+  // Next button: always shown for typed answers; for tap answers only once answered
+  // (e.g. after going back). The last question shows "Send feedback".
+  function refreshActions(s, i) {
+    const f = flow(), q = f[i], last = i === f.length - 1;
+    const btn = s.querySelector('[data-act="next"]');
+    const answered = isAnswered(q);
+    const visible = ["multi", "text", "input"].includes(q.type) || answered;
+    btn.textContent = last ? "Send feedback" : (q.optional && !answered ? "Skip" : "Next");
+    btn.disabled = !q.optional && !answered;
+    btn.dataset.visible = String(visible);
+    btn.tabIndex = visible ? 0 : -1;
+    btn.setAttribute("aria-hidden", String(!visible));
+  }
+
+  // ---------- Motion ----------
+  function animateIn(s, dir) {
+    if (reduceMotion) { s.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: "ease-out" }); return; }
+    s.querySelectorAll(".a").forEach((el, k) => {
+      el.animate(
+        [{ opacity: 0, transform: `translateX(${dir * 44}px)` }, { opacity: 1, transform: "translateX(0)" }],
+        { duration: 680, delay: 60 + Math.min(k, 8) * 42, easing: EASE, fill: "backwards" }
+      );
+    });
+  }
+  function animateOut(s, dir) {
+    if (reduceMotion) { s.remove(); return; }
+    const a = s.animate(
+      [{ opacity: 1, transform: "translateX(0)" }, { opacity: 0, transform: `translateX(${-dir * 36}px)` }],
+      { duration: 200, easing: "cubic-bezier(.4,0,1,1)", fill: "forwards" }
+    );
+    a.onfinish = () => s.remove();
+  }
+
+  function updateProgress(n) {
+    const total = flow().length;
+    if (n < 0) { countEl.textContent = ""; barEl.style.width = "0%"; return; }
+    if (n >= total) { countEl.textContent = ""; barEl.style.width = "100%"; return; }
+    countEl.textContent = `${n + 1} / ${total}`;
+    barEl.style.width = `${(n / total) * 100}%`;
+  }
+
+  function go(n, dir) {
+    const total = flow().length;
+    n = Math.max(-1, Math.min(n, total));
+    if (n >= 0 && n < total) saveDraft(n);
+    const old = stage.querySelector(".slide:not(.leaving)");
+    const next = n < 0 ? welcomeSlide() : n >= total ? doneSlide(n) : questionSlide(n);
+    if (old) old.classList.add("leaving");
+    stage.appendChild(next);
+    if (window.scrollY > 0) window.scrollTo(0, 0);
+    updateProgress(n);
+    if (old) animateOut(old, dir);
+    animateIn(next, dir);
+    const field = next.querySelector(".field");
+    if (field && finePointer) setTimeout(() => field.focus({ preventScroll: true }), 380);
+    else { const h = next.querySelector(".question"); if (h) h.focus({ preventScroll: true }); }
+  }
+
+  // ---------- Answering ----------
+  function pick(s, i, k) {
+    if (busy) return;
+    const q = flow()[i];
+    if (q.type === "multi") {
+      const opts = optionsOf(q), o = opts[k];
+      let cur = [...(answers[q.id] || [])];
+      if (cur.includes(o)) cur = cur.filter(x => x !== o);
+      else {
+        cur.push(o);
+        if (q.exclusive) cur = o === q.exclusive ? [o] : cur.filter(x => x !== q.exclusive);
+      }
+      answers[q.id] = cur;
+      s.querySelectorAll("[data-k]").forEach(b => b.setAttribute("aria-checked", String(cur.includes(opts[+b.dataset.k]))));
+      saveDraft(i);
+      refreshActions(s, i);
+      return;
+    }
+    const v = valueFor(q, k);
+    answers[q.id] = v;
+    s.querySelectorAll("[data-k]").forEach(b => b.setAttribute("aria-checked", String(+b.dataset.k === k)));
+    saveDraft(i);
+    if (i === flow().length - 1) { refreshActions(s, i); return; }   // last one waits for "Send feedback"
+    busy = true;
+    setTimeout(() => { busy = false; go(i + 1, 1); }, reduceMotion ? 150 : 380);
+  }
+
+  stage.addEventListener("click", e => {
+    const s = e.target.closest(".slide");
+    if (!s || s.classList.contains("leaving")) return;
+    const i = +s.dataset.i;
+    const act = e.target.closest("[data-act]");
+    if (act) {
+      if (busy) return;
+      const a = act.dataset.act;
+      if (a === "start") go(resumeIdx, 1);
+      else if (a === "back") go(i - 1, -1);
+      else if (a === "next") {
+        if (act.disabled || act.dataset.visible !== "true") return;
+        if (i === flow().length - 1) submit(s, act); else go(i + 1, 1);
+      }
+      return;
+    }
+    const opt = e.target.closest("[data-k]");
+    if (opt) pick(s, i, +opt.dataset.k);
+  });
+
+  stage.addEventListener("input", e => {
+    if (!e.target.matches(".field")) return;
+    const s = e.target.closest(".slide"), i = +s.dataset.i;
+    answers[flow()[i].id] = e.target.value;
+    saveDraft(i);
+    refreshActions(s, i);
+  });
+
+  // Keyboard: number keys pick an answer, Enter goes next, left arrow goes back
+  document.addEventListener("keydown", e => {
+    const s = stage.querySelector(".slide:not(.leaving)");
+    if (!s || e.metaKey || e.ctrlKey || e.altKey) return;
+    const t = e.target;
+    if (e.key === "Enter") {
+      if (t.matches("textarea, button")) return;
+      const b = s.querySelector('[data-act="next"][data-visible="true"]:not([disabled])') || s.querySelector('[data-act="start"]');
+      if (b) { e.preventDefault(); b.click(); }
+      return;
+    }
+    if (t.matches("textarea, input")) return;
+    if (/^[0-9]$/.test(e.key)) {
+      const group = s.querySelector(".opts, .nps");
+      if (!group || group.getAttribute("role") === "group") return;
+      const k = group.classList.contains("nps") ? Number(e.key) : Number(e.key) - 1;
+      const b = group.querySelectorAll("[data-k]")[k];
+      if (b) { e.preventDefault(); b.click(); }
+    } else if (e.key === "ArrowLeft") {
+      const b = s.querySelector('[data-act="back"]:not(.off)');
+      if (b) { e.preventDefault(); b.click(); }
+    }
+  });
+
+  // ---------- Sending ----------
+  function buildRow() {
+    const sus = SUS.map((_, i) => answers[`sus_${i + 1}`]);
+    // SUS score: odd items (answer − 1), even items (5 − answer), total × 2.5
+    const susScore = sus.reduce((sum, v, i) => sum + (i % 2 === 0 ? v - 1 : 5 - v), 0) * 2.5;
+    const nps = answers.nps;
+    const clean = {};
+    flow().forEach(q => {
+      let v = answers[q.id];
+      if (v === undefined) return;
+      if (typeof v === "string") { v = v.trim(); if (!v) return; }
+      if (Array.isArray(v)) { const ok = optionsOf(q); v = v.filter(x => ok.includes(x)); if (!v.length) return; }
+      clean[q.id] = v;
+    });
+    clean.sus = sus;
+    return {
+      respondent_id: respondentId(),
+      role: answers.role,
+      sus_score: susScore,
+      nps,
+      nps_group: nps >= 9 ? "promoter" : nps >= 7 ? "passive" : "detractor",
+      disappointment: answers.disappointment,
+      time_saved: answers.time_saved,
+      answers: clean
+    };
+  }
+
+  async function send(row) {
+    if (!CONFIG.supabaseUrl || !CONFIG.supabaseKey) {
+      try {
+        const all = JSON.parse(localStorage.getItem("tutorlink-feedback-preview") || "[]");
+        all.push({ ...row, created_at: new Date().toISOString() });
+        localStorage.setItem("tutorlink-feedback-preview", JSON.stringify(all));
+      } catch (e) {}
+      console.info("Preview mode. This is what would be saved:", row);
+      return { preview: true };
+    }
+    const headers = { "apikey": CONFIG.supabaseKey, "Content-Type": "application/json", "Prefer": "return=minimal" };
+    if (CONFIG.supabaseKey.startsWith("eyJ")) headers["Authorization"] = `Bearer ${CONFIG.supabaseKey}`; // older anon keys
+    const res = await fetch(`${CONFIG.supabaseUrl.replace(/\/$/, "")}/rest/v1/${CONFIG.table}`, {
+      method: "POST", headers, body: JSON.stringify(row)
+    });
+    if (!res.ok) throw new Error(`Save failed (${res.status}): ${await res.text()}`);
+    return { preview: false };
+  }
+
+  async function submit(s, btn) {
+    const f = flow();
+    const missing = f.findIndex(q => !q.optional && !isAnswered(q));
+    if (missing !== -1) { go(missing, -1); return; }
+    const err = s.querySelector(".send-err");
+    err.hidden = true;
+    btn.disabled = true;
+    btn.textContent = "Sending…";
+    busy = true;
+    try {
+      const r = await send(buildRow());
+      lastPreview = r.preview;
+      clearDraft();
+      busy = false;
+      go(f.length, 1);
+    } catch (e) {
+      console.error(e);
+      busy = false;
+      err.hidden = false;
+      btn.disabled = false;
+      btn.textContent = "Send feedback";
+    }
+  }
+
+  // ---------- Start ----------
+  const draft = loadDraft();
+  if (draft && draft.answers && typeof draft.answers === "object") {
+    Object.entries(draft.answers).forEach(([id, v]) => { if (byId[id]) answers[id] = v; });
+    if (Object.keys(answers).length) resumeIdx = Math.max(0, Math.min(Number(draft.idx) || 0, flow().length - 1));
+  }
+  const first = welcomeSlide();
+  stage.appendChild(first);
+  updateProgress(-1);
+  animateIn(first, 1);
+})();
+</script>
+</body>
+</html>

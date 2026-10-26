@@ -1,0 +1,650 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex, nofollow">
+<title>TutorLink Results</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<!--
+  Admin results page. The password is NOT stored in this file: it is checked
+  inside Supabase by the admin_feedback() function (see setup.sql). Without the
+  right password the database returns nothing.
+-->
+<style>
+  :root{
+    --paper:#FAFAFB;
+    --surface:#FFFFFF;
+    --ink:#141A29;
+    --ink-2:#3B4254;
+    --muted:#6B7283;
+    --line:#E7E9EE;
+    --line-2:#D6DAE2;
+    --line-3:#B9C0CD;
+    --hover:#F3F5F9;
+    --accent:#2E5BE8;
+    --accent-soft:#EEF2FD;
+    --error:#C0362C;
+    --r:12px;
+    --ease:cubic-bezier(.16,1,.3,1);
+
+    /* Chart colors: one hue for amounts, blue/red with a gray middle for agree/disagree */
+    --bar:#2a78d6;
+    --pos-2:#256abf;
+    --pos-1:#86b6ef;
+    --mid:#D9DCE3;
+    --neg-1:#f0a3a2;
+    --neg-2:#d03b3b;
+    --grid:#ECEEF2;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;background:var(--paper);color:var(--ink);overflow-x:hidden;
+    font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;
+  }
+  [hidden]{display:none !important}
+  button,input{font:inherit}
+
+  /* Top bar */
+  .bar{
+    position:sticky;top:0;z-index:10;
+    background:rgba(250,250,251,.86);
+    -webkit-backdrop-filter:saturate(1.4) blur(12px);backdrop-filter:saturate(1.4) blur(12px);
+    border-bottom:1px solid var(--line);
+  }
+  .bar-in{max-width:1080px;margin:0 auto;padding:0 20px;height:52px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:15px;letter-spacing:-.01em;white-space:nowrap}
+  .brand small{font-weight:500;color:var(--muted);font-size:13.5px}
+  .bar-actions{display:flex;gap:8px}
+
+  .btn{
+    appearance:none;border:0;height:40px;padding:0 16px;border-radius:10px;
+    background:var(--ink);color:#fff;font-size:14px;font-weight:500;cursor:pointer;white-space:nowrap;
+    transition:background-color .15s ease;
+  }
+  @media (hover:hover){ .btn:hover{background:#252D41} }
+  .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .btn[disabled]{opacity:.4;cursor:default}
+  .btn.ghost{background:var(--surface);color:var(--ink);border:1px solid var(--line-2)}
+  @media (hover:hover){ .btn.ghost:hover{background:var(--hover)} }
+
+  /* Login */
+  .login{max-width:400px;margin:0 auto;padding:18vh 20px 40px}
+  .login h1{font-size:28px;letter-spacing:-.022em;line-height:1.2;margin:0 0 8px}
+  .login p{margin:0 0 24px;color:var(--ink-2)}
+  .field{
+    display:block;width:100%;font-size:16px;color:var(--ink);background:var(--surface);
+    border:1px solid var(--line-2);border-radius:var(--r);padding:12px 14px;margin-bottom:12px;
+    transition:border-color .2s var(--ease),box-shadow .2s var(--ease);
+  }
+  .field:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+  .login .btn{width:100%;height:48px}
+  .err{margin:12px 0 0;font-size:14px;color:var(--error)}
+
+  /* Dashboard */
+  .wrap{max-width:1080px;margin:0 auto;padding:24px 20px 80px}
+  .head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:20px}
+  .head h1{font-size:26px;letter-spacing:-.02em;line-height:1.2;margin:0}
+  .head p{margin:4px 0 0;color:var(--muted);font-size:14px}
+
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{
+    appearance:none;border:1px solid var(--line-2);background:var(--surface);color:var(--ink-2);
+    height:34px;padding:0 14px;border-radius:999px;font-size:13.5px;cursor:pointer;
+    transition:background-color .15s ease,border-color .15s ease,color .15s ease;
+  }
+  @media (hover:hover){ .chip:hover{border-color:var(--line-3)} }
+  .chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:#fff}
+  .chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .chip .n{opacity:.6;margin-left:4px;font-variant-numeric:tabular-nums}
+
+  .tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:12px}
+  .tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+  .tile .k{font-size:13px;color:var(--muted);margin-bottom:6px}
+  .tile .v{font-size:30px;font-weight:600;letter-spacing:-.02em;line-height:1.1}
+  .tile .s{font-size:13px;color:var(--ink-2);margin-top:6px}
+
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;min-width:0}
+  .card.wide{grid-column:1 / -1}
+  .card h2{font-size:15px;font-weight:600;margin:0 0 2px;letter-spacing:-.01em}
+  .card .sub{font-size:13px;color:var(--muted);margin:0 0 16px}
+  .section{font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:28px 0 10px}
+
+  /* Horizontal bars */
+  .hbars{display:grid;gap:10px}
+  .hrow{display:grid;grid-template-columns:minmax(0,1fr) 44px;gap:4px 10px;align-items:center}
+  .hrow .lbl{grid-column:1 / -1;font-size:13.5px;color:var(--ink-2);overflow-wrap:anywhere}
+  .track{height:12px;border-radius:0 4px 4px 0;position:relative}
+  .fill{height:100%;background:var(--bar);border-radius:0 4px 4px 0;min-width:2px}
+  .hrow .val{font-size:13px;color:var(--ink-2);text-align:right;font-variant-numeric:tabular-nums}
+  .hrow:hover .fill{filter:brightness(1.1)}
+
+  /* Columns (per day, NPS, ease-of-use spread) */
+  .cols{display:flex;align-items:flex-end;gap:2px;height:160px;border-bottom:1px solid var(--line-3);
+    background:repeating-linear-gradient(to top,transparent 0,transparent 39px,var(--grid) 39px,var(--grid) 40px)}
+  .col{flex:1;min-width:0;height:100%;display:flex;align-items:flex-end;cursor:default}
+  .col span{display:block;width:100%;background:var(--bar);border-radius:4px 4px 0 0;min-height:0}
+  .col:hover span{filter:brightness(1.1)}
+  .xlabels{display:flex;gap:2px;margin-top:6px}
+  .xlabels span{flex:1;min-width:0;text-align:center;font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;display:flex;justify-content:center}
+
+  /* Agree / disagree stacked bars */
+  .likert{display:grid;gap:12px}
+  .lrow .lbl{font-size:13.5px;color:var(--ink-2);margin-bottom:5px;display:flex;justify-content:space-between;gap:12px}
+  .lrow .lbl b{font-weight:500;color:var(--ink);white-space:nowrap;font-variant-numeric:tabular-nums}
+  .stack{display:flex;gap:2px;height:14px}
+  .stack span{display:block;height:100%;min-width:0}
+  .stack span:first-child{border-radius:4px 0 0 4px}
+  .stack span:last-child{border-radius:0 4px 4px 0}
+  .stack span:only-child{border-radius:4px}
+  .stack span:hover{filter:brightness(1.08)}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin:0 0 14px;font-size:12.5px;color:var(--ink-2)}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+
+  /* Written answers */
+  .quotes{display:grid;gap:8px;max-height:420px;overflow:auto;padding-right:4px}
+  .quote{border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere}
+  .quote .who{display:block;font-size:12px;color:var(--muted);margin-bottom:3px;white-space:normal}
+  .empty{font-size:14px;color:var(--muted)}
+
+  /* Table */
+  .table-wrap{overflow:auto;max-height:520px;border:1px solid var(--line);border-radius:10px}
+  table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+  th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+  th{position:sticky;top:0;background:var(--paper);font-weight:600;color:var(--ink-2);z-index:1}
+  tbody tr:hover{background:var(--hover)}
+
+  /* Tooltip */
+  .tip{position:fixed;z-index:50;pointer-events:none;background:var(--ink);color:#fff;font-size:12.5px;line-height:1.4;
+    padding:6px 9px;border-radius:8px;max-width:260px;box-shadow:0 6px 20px rgba(20,26,41,.18);opacity:0;transition:opacity .12s ease}
+  .tip.on{opacity:1}
+
+  @media (max-width:900px){ .tiles{grid-template-columns:repeat(2,minmax(0,1fr))} }
+  @media (max-width:700px){ .grid{grid-template-columns:minmax(0,1fr)} }
+  @media (max-width:560px){
+    .bar-in{padding:0 16px}
+    .wrap{padding:20px 16px 64px}
+    .login{padding:12vh 16px 40px}
+    .brand small{display:none}
+    .bar-actions .btn{padding:0 12px}
+    .tile .v{font-size:26px}
+  }
+</style>
+</head>
+<body>
+  <header class="bar">
+    <div class="bar-in">
+      <div class="brand">
+        <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><rect x=".5" y=".5" width="21" height="21" rx="6" fill="#141A29"/><path d="M7 7.6h8M11 7.6v7.4" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+        TutorLink <small>Feedback results</small>
+      </div>
+      <div class="bar-actions" id="barActions" hidden>
+        <button type="button" class="btn ghost" id="refresh">Refresh</button>
+        <button type="button" class="btn" id="download">Download for AI (.txt)</button>
+      </div>
+    </div>
+  </header>
+
+  <form class="login" id="login" autocomplete="off">
+    <h1>Admin only</h1>
+    <p>Enter the password to see the feedback.</p>
+    <input class="field" id="pw" type="password" placeholder="Password" aria-label="Password" required>
+    <button class="btn" type="submit" id="go">Open results</button>
+    <p class="err" id="loginErr" hidden></p>
+  </form>
+
+  <main class="wrap" id="dash" hidden></main>
+  <div class="tip" id="tip" role="tooltip"></div>
+
+<script>
+(() => {
+  // ---------- Settings (same project as the feedback form) ----------
+  const CONFIG = {
+    supabaseUrl: "https://aigzawebapfohpkbxlcp.supabase.co",
+    supabaseKey: "sb_publishable_5iwKpz0kHNx52TJeFz5V5A_SCAkP7EV"  // publishable key (meant to be public)
+  };
+  const PW_KEY = "tutorlink-admin-pw";
+
+  // ---------- What each saved answer means ----------
+  const LIKERT = ["Strongly disagree", "Disagree", "Neutral", "Agree", "Strongly agree"];
+  const ROLES = ["Student", "Tutor", "Lecturer", "Admin"];
+  const SUS_TEXT = [
+    "I would like to use TutorLink often.",
+    "TutorLink was more complicated than it needed to be.",
+    "TutorLink was easy to use.",
+    "I would need help from a technical person to use TutorLink.",
+    "The different parts of TutorLink worked well together.",
+    "Parts of TutorLink were confusing.",
+    "Most people would learn to use TutorLink very quickly.",
+    "TutorLink was awkward to use.",
+    "I felt confident using TutorLink.",
+    "I had to learn a lot before I could use TutorLink."
+  ];
+  const LIKERT_Q = [
+    ...SUS_TEXT.map((t, i) => ({ id: `sus_${i + 1}`, label: t, negative: i % 2 === 1 })),
+    { id: "look_professional", label: "TutorLink looks professional and modern." },
+    { id: "fast", label: "TutorLink was fast. Nothing took long to load." },
+    { id: "checkin_easy", label: "Checking in to a session was quick and easy.", who: "Students" },
+    { id: "attendance_view", label: "Seeing my attendance on my phone helps me keep up.", who: "Students" },
+    { id: "start_checkin_easy", label: "Starting a check-in was easy.", who: "Tutors & lecturers" },
+    { id: "trust_numbers", label: "I trust the attendance numbers in TutorLink.", who: "Tutors & lecturers" },
+    { id: "admin_glance", label: "I can see what’s happening in tutoring at a glance.", who: "Admins" },
+    { id: "look_trust", label: "I trust TutorLink to keep student information safe.", who: "Admins" },
+    { id: "spot_students", label: "TutorLink makes it easier to spot students who need help.", who: "All staff" }
+  ];
+  const CHOICE_Q = [
+    { id: "prefer_over_paper", label: "TutorLink or a paper register?", options: ["TutorLink", "Paper register", "No preference"] },
+    { id: "disappointment", label: "If TutorLink disappeared tomorrow, how would you feel?", options: ["Very disappointed", "Somewhat disappointed", "Not disappointed"] },
+    { id: "broken", label: "Did anything break or not work properly?", options: ["No, everything worked", "Yes, something didn’t work"] },
+    { id: "stay_organised", label: "Would an app for campus life help you stay organised?", options: ["Yes", "Maybe", "No"] },
+    { id: "minutes_saved", label: "Time saved per class vs paper register", who: "Tutors & lecturers",
+      options: ["None", "1 to 2 minutes", "3 to 5 minutes", "6 to 10 minutes", "More than 10 minutes"] },
+    { id: "time_saved", label: "Time TutorLink would save each week", who: "Admins",
+      options: ["None", "Less than 15 minutes", "15 to 30 minutes", "30 to 60 minutes", "1 to 2 hours", "More than 2 hours"] }
+  ];
+  const MULTI_Q = [
+    { id: "wanted_features", label: "Which of these would make campus easier?" },
+    { id: "attendance_before", label: "Before TutorLink, how did you take attendance?", who: "All staff" }
+  ];
+  const TEXT_Q = [
+    { id: "broken_what", label: "What didn’t work?" },
+    { id: "to_fix", label: "One thing they’d change about TutorLink" },
+    { id: "app_idea", label: "Problems at Rosebank an app could fix" },
+    { id: "final_thoughts", label: "Final thoughts" }
+  ];
+
+  // ---------- Elements ----------
+  const $ = id => document.getElementById(id);
+  const loginEl = $("login"), dash = $("dash"), tip = $("tip");
+  let rows = [];
+  let roleFilter = "All";
+
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const pct = (n, d) => d ? Math.round(100 * n / d) : 0;
+  const avg = a => a.length ? a.reduce((s, v) => s + v, 0) / a.length : null;
+  const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+  const fmtDate = iso => new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const ans = (r, id) => (r.answers || {})[id];
+
+  // ---------- Fetching (password is checked inside Supabase) ----------
+  async function fetchRows(pw) {
+    if (!CONFIG.supabaseUrl || !CONFIG.supabaseKey) throw new Error("Supabase isn’t set up in this page yet.");
+    const headers = { "apikey": CONFIG.supabaseKey, "Content-Type": "application/json" };
+    if (CONFIG.supabaseKey.startsWith("eyJ")) headers["Authorization"] = `Bearer ${CONFIG.supabaseKey}`;
+    const res = await fetch(`${CONFIG.supabaseUrl.replace(/\/$/, "")}/rest/v1/rpc/admin_feedback`, {
+      method: "POST", headers, body: JSON.stringify({ pw })
+    });
+    if (res.ok) return res.json();
+    const body = await res.text();
+    if (/wrong password/i.test(body)) { const e = new Error("Wrong password."); e.badPw = true; throw e; }
+    throw new Error(`Couldn’t load results (${res.status}).`);
+  }
+
+  async function load(pw) {
+    rows = await fetchRows(pw);
+    rows.sort((a, b) => a.created_at.localeCompare(b.created_at));
+    try { sessionStorage.setItem(PW_KEY, pw); } catch (e) {}
+    loginEl.hidden = true;
+    dash.hidden = false;
+    $("barActions").hidden = false;
+    render();
+  }
+
+  loginEl.addEventListener("submit", async e => {
+    e.preventDefault();
+    const err = $("loginErr"), btn = $("go");
+    err.hidden = true;
+    btn.disabled = true; btn.textContent = "Checking…";
+    try { await load($("pw").value); }
+    catch (x) { err.textContent = x.message; err.hidden = false; }
+    btn.disabled = false; btn.textContent = "Open results";
+  });
+
+  $("refresh").addEventListener("click", async e => {
+    const b = e.currentTarget;
+    b.disabled = true; b.textContent = "Loading…";
+    try { await load(sessionStorage.getItem(PW_KEY) || ""); }
+    catch (x) { alert(x.message); }
+    b.disabled = false; b.textContent = "Refresh";
+  });
+
+  $("download").addEventListener("click", () => {
+    const blob = new Blob([buildReport(rows)], { type: "text/plain;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `tutorlink-feedback-${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+
+  // ---------- Numbers ----------
+  function stats(list) {
+    const n = list.length;
+    const sus = list.map(r => r.sus_score).filter(v => v !== null && v !== undefined).map(Number);
+    const nps = list.map(r => r.nps).filter(v => v !== null && v !== undefined);
+    const prom = nps.filter(v => v >= 9).length, det = nps.filter(v => v <= 6).length;
+    const dis = list.filter(r => r.disappointment);
+    const pref = list.filter(r => ans(r, "prefer_over_paper"));
+    return {
+      n,
+      testers: new Set(list.map(r => r.respondent_id || r.id)).size,
+      sus: avg(sus),
+      nps: nps.length ? Math.round(100 * (prom - det) / nps.length) : null,
+      prom, det, passive: nps.length - prom - det, npsN: nps.length,
+      veryDis: pct(dis.filter(r => r.disappointment === "Very disappointed").length, dis.length), disN: dis.length,
+      prefer: pct(pref.filter(r => ans(r, "prefer_over_paper") === "TutorLink").length, pref.length), prefN: pref.length
+    };
+  }
+  const susGrade = s => s === null ? "" : s >= 80.3 ? "Excellent" : s >= 68 ? "Good (above average)" : s >= 51 ? "OK (below average)" : "Poor";
+  const npsGrade = s => s === null ? "" : s >= 50 ? "Excellent" : s >= 20 ? "Good" : s >= 0 ? "OK" : "Needs work";
+
+  function counts(list, id, options) {
+    const m = new Map((options || []).map(o => [o, 0]));
+    list.forEach(r => {
+      const v = ans(r, id);
+      (Array.isArray(v) ? v : v === undefined || v === null ? [] : [v]).forEach(x => m.set(x, (m.get(x) || 0) + 1));
+    });
+    return [...m.entries()];
+  }
+
+  // ---------- Chart pieces ----------
+  function hbars(entries, total, sort) {
+    if (!total) return `<p class="empty">No answers yet.</p>`;
+    if (sort) entries = [...entries].sort((a, b) => b[1] - a[1]);
+    const max = Math.max(1, ...entries.map(e => e[1]));
+    return `<div class="hbars">` + entries.map(([k, v]) => `
+      <div class="hrow" data-tip="${esc(k)}: ${plural(v, "answer")} (${pct(v, total)}%)">
+        <div class="lbl">${esc(k)}</div>
+        <div class="track"><div class="fill" style="width:${(100 * v / max).toFixed(1)}%"></div></div>
+        <div class="val">${pct(v, total)}%</div>
+      </div>`).join("") + `</div>`;
+  }
+
+  function cols(entries, tipFn, colorFn) {
+    const max = Math.max(1, ...entries.map(e => e[1]));
+    return `<div class="cols">` + entries.map(([k, v], i) =>
+      `<div class="col" data-tip="${esc(tipFn(k, v))}"><span style="height:${(100 * v / max).toFixed(1)}%${colorFn ? `;background:${colorFn(k, i)}` : ""}"></span></div>`).join("") +
+      `</div><div class="xlabels">` + entries.map(([k]) => `<span>${esc(k)}</span>`).join("") + `</div>`;
+  }
+
+  const LIKERT_COLORS = ["var(--neg-2)", "var(--neg-1)", "var(--mid)", "var(--pos-1)", "var(--pos-2)"];
+  const likertLegend = `<div class="legend">${LIKERT.map((l, i) => `<span><i style="background:${LIKERT_COLORS[i]}"></i>${l}</span>`).join("")}</div>`;
+
+  function likertRows(list, qs) {
+    const out = qs.map(q => {
+      const vals = list.map(r => ans(r, q.id)).filter(v => typeof v === "number");
+      if (!vals.length) return "";
+      const c = [1, 2, 3, 4, 5].map(k => vals.filter(v => v === k).length);
+      const agree = pct(c[3] + c[4], vals.length);
+      const segs = c.map((v, i) => v ? `<span style="flex:${v};background:${LIKERT_COLORS[i]}" data-tip="${LIKERT[i]}: ${plural(v, "person")} (${pct(v, vals.length)}%)"></span>` : "").join("");
+      return `<div class="lrow">
+        <div class="lbl"><span>${esc(q.label)}${q.negative ? ` <em style="color:var(--muted);font-style:normal">(lower is better)</em>` : ""}${q.who ? ` <em style="color:var(--muted);font-style:normal">· ${q.who}</em>` : ""}</span><b>${agree}% agree · ${vals.length}</b></div>
+        <div class="stack">${segs}</div>
+      </div>`;
+    }).join("");
+    return out || `<p class="empty">No answers yet.</p>`;
+  }
+
+  function card(title, sub, body, wide) {
+    return `<section class="card${wide ? " wide" : ""}"><h2>${title}</h2>${sub ? `<p class="sub">${sub}</p>` : ""}${body}</section>`;
+  }
+
+  // ---------- Render ----------
+  function render() {
+    const list = roleFilter === "All" ? rows : rows.filter(r => r.role === roleFilter);
+    const s = stats(list);
+    const last = rows.length ? fmtDate(rows[rows.length - 1].created_at) : "none yet";
+
+    const chips = ["All", ...ROLES].map(r => {
+      const n = r === "All" ? rows.length : rows.filter(x => x.role === r).length;
+      return `<button type="button" class="chip" data-role="${r}" aria-pressed="${r === roleFilter}">${r === "All" ? "Everyone" : r + "s"}<span class="n">${n}</span></button>`;
+    }).join("");
+
+    const tile = (k, v, sub) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${sub}</div></div>`;
+    const tiles = [
+      tile("Responses", s.n, `${plural(s.testers, "tester")}`),
+      tile("Ease of use (SUS)", s.sus === null ? "–" : s.sus.toFixed(1), s.sus === null ? "out of 100" : `${susGrade(s.sus)} · 68 is average`),
+      tile("Would recommend (NPS)", s.nps === null ? "–" : (s.nps > 0 ? "+" : "") + s.nps, s.npsN ? `${npsGrade(s.nps)} · −100 to +100` : "−100 to +100"),
+      tile("Very disappointed", s.disN ? s.veryDis + "%" : "–", "if it vanished · 40%+ is strong"),
+      tile("Prefer TutorLink", s.prefN ? s.prefer + "%" : "–", "over a paper register")
+    ].join("");
+
+    if (!list.length) {
+      dash.innerHTML = head(chips, last) + `<div class="tiles">${tiles}</div>` + card("No responses yet", "", `<p class="empty">When testers send the form, their answers show up here. Press Refresh to check again.</p>`, true);
+      return;
+    }
+
+    // Responses per day
+    const byDay = new Map();
+    list.forEach(r => { const d = r.created_at.slice(0, 10); byDay.set(d, (byDay.get(d) || 0) + 1); });
+    const days = [...byDay.keys()].sort();
+    const dayEntries = [];
+    if (days.length) {
+      for (let d = new Date(days[0] + "T00:00:00Z"); d <= new Date(days[days.length - 1] + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + 1)) {
+        const key = d.toISOString().slice(0, 10);
+        dayEntries.push([key, byDay.get(key) || 0]);
+      }
+    }
+    const shortDay = k => new Date(k + "T00:00:00Z").toLocaleDateString(undefined, { day: "numeric", month: "short", timeZone: "UTC" });
+    const perDay = `<div class="cols">` + dayEntries.map(([k, v]) => {
+      const max = Math.max(1, ...dayEntries.map(e => e[1]));
+      return `<div class="col" data-tip="${shortDay(k)}: ${plural(v, "response")}"><span style="height:${(100 * v / max).toFixed(1)}%"></span></div>`;
+    }).join("") + `</div><div class="xlabels">` + dayEntries.map(([k], i) =>
+      `<span>${dayEntries.length <= 5 || i % Math.ceil(dayEntries.length / 5) === 0 ? shortDay(k) : ""}</span>`).join("") + `</div>`;
+
+    // NPS 0–10
+    const npsEntries = Array.from({ length: 11 }, (_, k) => [String(k), list.filter(r => r.nps === k).length]);
+    const npsColor = k => +k >= 9 ? "var(--pos-2)" : +k >= 7 ? "var(--mid)" : "var(--neg-2)";
+    const npsChart = `<div class="legend"><span><i style="background:var(--neg-2)"></i>0–6 Detractors · ${s.det}</span><span><i style="background:var(--mid)"></i>7–8 Passive · ${s.passive}</span><span><i style="background:var(--pos-2)"></i>9–10 Promoters · ${s.prom}</span></div>` +
+      cols(npsEntries, (k, v) => `Scored ${k}: ${plural(v, "person")}`, npsColor);
+
+    // Ease-of-use spread in 10-point bands
+    const bands = Array.from({ length: 10 }, (_, i) => [String(i * 10), 0]);
+    list.forEach(r => { if (r.sus_score !== null && r.sus_score !== undefined) bands[Math.min(9, Math.floor(r.sus_score / 10))][1]++; });
+    const susChart = cols(bands, (k, v) => `Score ${k}–${k === "90" ? 100 : +k + 9}: ${plural(v, "person")}`);
+
+    // Role breakdown (always everyone, so you can see who answered)
+    const roleChart = hbars(ROLES.map(r => [r + "s", rows.filter(x => x.role === r).length]), rows.length);
+
+    let html = head(chips, last) + `<div class="tiles">${tiles}</div>`;
+
+    html += `<div class="section">Overview</div><div class="grid">`;
+    html += card("Responses per day", plural(list.length, "response"), perDay);
+    html += card("Who answered", "All responses, by role", roleChart);
+    html += card("How likely to recommend", `0 = not at all, 10 = definitely · ${plural(s.npsN, "answer")}`, npsChart);
+    html += card("Ease-of-use score spread", "SUS score per person, out of 100 (68 is average)", susChart);
+    html += `</div>`;
+
+    html += `<div class="section">The big questions</div><div class="grid">`;
+    CHOICE_Q.forEach(q => {
+      const c = counts(list, q.id, q.options), t = c.reduce((a, e) => a + e[1], 0);
+      if (!t && q.who) return;
+      html += card(esc(q.label), `${q.who ? q.who + " · " : ""}${plural(t, "answer")}`, hbars(c, t));
+    });
+    MULTI_Q.forEach(q => {
+      const answered = list.filter(r => Array.isArray(ans(r, q.id)) && ans(r, q.id).length).length;
+      const c = counts(list, q.id);
+      if (!answered && q.who) return;
+      html += card(esc(q.label), `${q.who ? q.who + " · " : ""}Could pick more than one · ${plural(answered, "person")}`, hbars(c, answered, true));
+    });
+    html += `</div>`;
+
+    html += `<div class="section">Agree or disagree</div><div class="grid">`;
+    html += card("Ease of use (the 10 SUS statements)", "For the “lower is better” ones, disagreeing is good", likertLegend + `<div class="likert">${likertRows(list, LIKERT_Q.slice(0, 10))}</div>`);
+    html += card("Look, speed and role questions", "Each role only saw its own questions", likertLegend + `<div class="likert">${likertRows(list, LIKERT_Q.slice(10))}</div>`);
+    html += `</div>`;
+
+    html += `<div class="section">In their own words</div><div class="grid">`;
+    TEXT_Q.forEach(q => {
+      const items = list.filter(r => typeof ans(r, q.id) === "string" && ans(r, q.id).trim());
+      html += card(esc(q.label), plural(items.length, "answer"), items.length
+        ? `<div class="quotes">${items.slice().reverse().map(r => `<div class="quote"><span class="who">${esc(r.role)} · ${fmtDate(r.created_at)}</span>${esc(ans(r, q.id))}</div>`).join("")}</div>`
+        : `<p class="empty">No answers yet.</p>`);
+    });
+    html += `</div>`;
+
+    html += `<div class="section">Every response</div>`;
+    html += card("All responses", "Newest first. Scroll sideways on a phone.", table(list), true);
+
+    dash.innerHTML = html;
+  }
+
+  function head(chips, last) {
+    return `<div class="head"><div><h1>Feedback results</h1><p>Last response: ${esc(last)}</p></div><div class="chips" role="group" aria-label="Filter by role">${chips}</div></div>`;
+  }
+
+  function table(list) {
+    const cols = [
+      ["When", r => fmtDate(r.created_at)], ["Role", r => r.role],
+      ["SUS", r => r.sus_score ?? ""], ["NPS", r => r.nps ?? ""],
+      ["If it vanished", r => r.disappointment ?? ""], ["Prefers", r => ans(r, "prefer_over_paper") ?? ""],
+      ["Broke?", r => (ans(r, "broken") || "").startsWith("Yes") ? "Yes" : (ans(r, "broken") ? "No" : "")],
+      ["Time saved", r => ans(r, "minutes_saved") || r.time_saved || ""],
+      ["Change one thing", r => ans(r, "to_fix") || ""]
+    ];
+    return `<div class="table-wrap"><table><thead><tr>${cols.map(c => `<th>${c[0]}</th>`).join("")}</tr></thead><tbody>` +
+      list.slice().reverse().map(r => `<tr>${cols.map(c => {
+        const v = String(c[1](r));
+        return `<td${v.length > 60 ? ` title="${esc(v)}"` : ""}>${esc(v.length > 60 ? v.slice(0, 57) + "…" : v)}</td>`;
+      }).join("")}</tr>`).join("") + `</tbody></table></div>`;
+  }
+
+  dash.addEventListener("click", e => {
+    const c = e.target.closest(".chip");
+    if (!c) return;
+    roleFilter = c.dataset.role;
+    render();
+  });
+
+  // ---------- Tooltip ----------
+  function showTip(el, x, y) {
+    tip.textContent = el.dataset.tip;
+    tip.classList.add("on");
+    const w = tip.offsetWidth, h = tip.offsetHeight;
+    tip.style.left = Math.max(8, Math.min(x + 12, innerWidth - w - 8)) + "px";
+    tip.style.top = Math.max(8, y - h - 12) + "px";
+  }
+  document.addEventListener("pointermove", e => {
+    const el = e.target.closest("[data-tip]");
+    if (el) showTip(el, e.clientX, e.clientY); else tip.classList.remove("on");
+  });
+  document.addEventListener("pointerdown", e => {
+    const el = e.target.closest("[data-tip]");
+    if (el && e.pointerType !== "mouse") showTip(el, e.clientX, e.clientY);
+  });
+  addEventListener("scroll", () => tip.classList.remove("on"), { passive: true });
+
+  // ---------- The text file for AI ----------
+  function buildReport(all) {
+    const L = [];
+    const s = stats(all);
+    const line = (t = "") => L.push(t);
+    const rule = () => line("=".repeat(70));
+    const dist = (list, id, options) => {
+      const c = counts(list, id, options), t = c.reduce((a, e) => a + e[1], 0);
+      return t ? c.map(([k, v]) => `    - ${k}: ${v} (${pct(v, t)}%)`).join("\n") : "    (no answers)";
+    };
+
+    rule();
+    line("TUTORLINK PILOT FEEDBACK – FULL EXPORT FOR ANALYSIS");
+    rule();
+    line(`Exported: ${new Date().toISOString()}`);
+    line(`Responses: ${s.n} from ${s.testers} testers`);
+    line(`Date range: ${all.length ? all[0].created_at.slice(0, 10) + " to " + all[all.length - 1].created_at.slice(0, 10) : "n/a"}`);
+    line();
+    line("ABOUT THIS FILE");
+    line("TutorLink is an attendance / check-in app being piloted at a campus (Rosebank).");
+    line("Testers were Students, Tutors, Lecturers and Admins. Each role saw some role-only questions.");
+    line("The form was anonymous. respondent_id is a random ID per browser, so repeat answers");
+    line("from the same device share an ID.");
+    line();
+    line("Suggested prompt: \"Analyse this pilot feedback. Summarise how usable and wanted TutorLink is,");
+    line("compare roles, pull out the main problems and feature requests from the written answers");
+    line("(with counts and example quotes), and give a prioritised list of what to fix or build next.\"");
+    line();
+    line("HOW THE SCORES WORK");
+    line("- SUS (System Usability Scale): 10 agree/disagree statements scored 0–100. 68 is the");
+    line("  industry average; 80.3+ is excellent (top 10%). Odd statements are positive, even are");
+    line("  negative. Answers are stored 1–5 (1 = Strongly disagree, 5 = Strongly agree).");
+    line("- NPS (Net Promoter Score): 0–10 'how likely to recommend'. 9–10 promoters, 7–8 passive,");
+    line("  0–6 detractors. NPS = % promoters − % detractors (−100 to +100).");
+    line("- 'Very disappointed' (Sean Ellis test): 40%+ answering 'Very disappointed' if the product");
+    line("  vanished is a common sign of strong product–market fit.");
+    line();
+
+    rule(); line("1. HEADLINE NUMBERS"); rule();
+    const headline = (label, list) => {
+      const x = stats(list);
+      line(`${label} (n=${x.n})`);
+      line(`  Average SUS: ${x.sus === null ? "n/a" : x.sus.toFixed(1) + " – " + susGrade(x.sus)}`);
+      line(`  NPS: ${x.nps === null ? "n/a" : x.nps} (promoters ${x.prom}, passive ${x.passive}, detractors ${x.det})`);
+      line(`  Very disappointed if gone: ${x.disN ? x.veryDis + "%" : "n/a"}`);
+      line(`  Prefer TutorLink over paper: ${x.prefN ? x.prefer + "%" : "n/a"}`);
+    };
+    headline("EVERYONE", all);
+    ROLES.forEach(r => { const l = all.filter(x => x.role === r); if (l.length) { line(); headline(r.toUpperCase() + "S", l); } });
+    line();
+
+    rule(); line("2. MULTIPLE-CHOICE ANSWERS (everyone, then by role)"); rule();
+    [...CHOICE_Q, ...MULTI_Q].forEach(q => {
+      if (!all.some(r => ans(r, q.id) !== undefined)) return;
+      line(`Q: ${q.label}${q.who ? " [" + q.who + " only]" : ""}${MULTI_Q.includes(q) ? " [could pick several]" : ""}`);
+      line("  Everyone:"); line(dist(all, q.id, q.options));
+      ROLES.forEach(r => {
+        const l = all.filter(x => x.role === r && ans(x, q.id) !== undefined);
+        if (l.length) { line(`  ${r}s:`); line(dist(l, q.id, q.options)); }
+      });
+      line();
+    });
+
+    rule(); line("3. AGREE / DISAGREE STATEMENTS (1 = Strongly disagree … 5 = Strongly agree)"); rule();
+    LIKERT_Q.forEach(q => {
+      const vals = all.map(r => ans(r, q.id)).filter(v => typeof v === "number");
+      if (!vals.length) return;
+      const c = [1, 2, 3, 4, 5].map(k => vals.filter(v => v === k).length);
+      line(`"${q.label}"${q.negative ? " [negative statement: disagreeing is good]" : ""}${q.who ? " [" + q.who + " only]" : ""}`);
+      line(`  n=${vals.length}, average ${avg(vals).toFixed(2)} / 5, agree ${pct(c[3] + c[4], vals.length)}%, disagree ${pct(c[0] + c[1], vals.length)}%`);
+      line(`  ${LIKERT.map((l, i) => `${l}: ${c[i]}`).join(" | ")}`);
+      line();
+    });
+
+    rule(); line("4. WRITTEN ANSWERS (verbatim, role in brackets)"); rule();
+    TEXT_Q.forEach(q => {
+      const items = all.filter(r => typeof ans(r, q.id) === "string" && ans(r, q.id).trim());
+      line(`Q: ${q.label} (${items.length} answers)`);
+      if (!items.length) line("  (none)");
+      items.forEach(r => line(`  - [${r.role}] ${ans(r, q.id).trim().replace(/\s*\n\s*/g, " / ")}`));
+      line();
+    });
+
+    rule(); line("5. EVERY RESPONSE (one block per person)"); rule();
+    all.forEach((r, i) => {
+      line(`#${i + 1} | ${r.created_at} | ${r.role} | respondent ${String(r.respondent_id || "").slice(0, 8)}`);
+      line(`  SUS ${r.sus_score ?? "n/a"} | NPS ${r.nps ?? "n/a"} (${r.nps_group || "n/a"}) | If gone: ${r.disappointment || "n/a"}`);
+      Object.entries(r.answers || {}).forEach(([k, v]) => {
+        if (["role", "nps", "disappointment", "sus"].includes(k) || v === "" || v === null) return;
+        const lq = LIKERT_Q.find(q => q.id === k);
+        const shown = Array.isArray(v) ? v.join("; ")
+          : lq ? `${v} (${LIKERT[v - 1] || v})` : String(v).replace(/\s*\n\s*/g, " / ");
+        line(`  ${k}: ${shown}`);
+      });
+      line();
+    });
+    rule(); line("END OF EXPORT"); rule();
+    return L.join("\n");
+  }
+
+  // ---------- Start: reopen straight away if already signed in this tab ----------
+  let saved = null;
+  try { saved = sessionStorage.getItem(PW_KEY); } catch (e) {}
+  if (saved) load(saved).catch(() => { try { sessionStorage.removeItem(PW_KEY); } catch (e) {} });
+})();
+</script>
+</body>
+</html>
